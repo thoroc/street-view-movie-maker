@@ -1,6 +1,7 @@
 mod directions;
 mod geo;
 mod net;
+mod streetview;
 
 use usage::Cli;
 
