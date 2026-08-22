@@ -1,3 +1,4 @@
+mod directions;
 mod geo;
 
 use usage::Cli;
