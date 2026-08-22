@@ -131,15 +131,18 @@ pub fn parse_directions_response(body: &str) -> Result<ResolvedRoute, Directions
 const DIRECTIONS_ENDPOINT: &str = "https://maps.googleapis.com/maps/api/directions/json";
 const MAX_ATTEMPTS: u32 = 4;
 
-fn backoff_delay(attempt: u32) -> std::time::Duration {
-    std::time::Duration::from_millis(200 * 2u64.pow(attempt.min(5)))
+#[derive(Debug)]
+enum FetchError {
+    Transient(String),
+    Fatal(String),
 }
 
 /// Fetches and resolves a route from the Directions API, retrying transient
-/// failures (timeouts, connect errors, 5xx, 429) with exponential backoff.
-/// Not unit tested here — exercised by the end-to-end test against the real
-/// API (see the plan's Testing strategy); the pure parsing/error-mapping
-/// logic above is what carries this module's unit test coverage.
+/// failures (timeouts, connect errors, 5xx, 429) with exponential backoff via
+/// `net::with_retry`. Not unit tested here — exercised by the end-to-end test
+/// against the real API (see the plan's Testing strategy); the pure
+/// parsing/error-mapping logic above is what carries this module's unit test
+/// coverage.
 pub async fn fetch_directions(
     client: &reqwest::Client,
     api_key: &str,
@@ -153,42 +156,38 @@ pub async fn fetch_directions(
         ("key", api_key.to_string()),
     ];
 
-    let mut attempt = 0;
-    loop {
-        attempt += 1;
-        match client.get(DIRECTIONS_ENDPOINT).query(&params).send().await {
-            Ok(response) => {
-                let status = response.status();
-                let transient =
-                    status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS;
-                if transient && attempt < MAX_ATTEMPTS {
-                    tokio::time::sleep(backoff_delay(attempt)).await;
-                    continue;
-                }
-                if transient {
-                    return Err(DirectionsError::Network {
-                        attempts: attempt,
-                        message: format!("HTTP {status}"),
-                    });
-                }
-                let body = response
-                    .text()
-                    .await
-                    .map_err(|e| DirectionsError::Network {
-                        attempts: attempt,
-                        message: e.to_string(),
-                    })?;
-                return parse_directions_response(&body);
+    let result = crate::net::with_retry(
+        MAX_ATTEMPTS,
+        |e: &FetchError| matches!(e, FetchError::Transient(_)),
+        || async {
+            let response = client
+                .get(DIRECTIONS_ENDPOINT)
+                .query(&params)
+                .send()
+                .await
+                .map_err(|e| {
+                    if e.is_timeout() || e.is_connect() {
+                        FetchError::Transient(e.to_string())
+                    } else {
+                        FetchError::Fatal(e.to_string())
+                    }
+                })?;
+            let status = response.status();
+            if status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                return Err(FetchError::Transient(format!("HTTP {status}")));
             }
-            Err(e) if (e.is_timeout() || e.is_connect()) && attempt < MAX_ATTEMPTS => {
-                tokio::time::sleep(backoff_delay(attempt)).await;
-            }
-            Err(e) => {
-                return Err(DirectionsError::Network {
-                    attempts: attempt,
-                    message: e.to_string(),
-                });
-            }
+            response
+                .text()
+                .await
+                .map_err(|e| FetchError::Fatal(e.to_string()))
+        },
+    )
+    .await;
+
+    match result {
+        Ok(body) => parse_directions_response(&body),
+        Err((attempts, FetchError::Transient(message) | FetchError::Fatal(message))) => {
+            Err(DirectionsError::Network { attempts, message })
         }
     }
 }
