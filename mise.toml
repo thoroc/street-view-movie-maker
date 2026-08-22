@@ -1,0 +1,13 @@
+[tools]
+hk = "1.55.0"
+pkl = "0.32.1"
+rust = "1.97.1"
+ffmpeg = "9.0.1"
+
+[hooks]
+enter = "mise install"
+postinstall = "hk install --mise"
+
+[tasks.build]
+description = "Build the CLI"
+run = "cargo build"
