@@ -3,3 +3,10 @@ API_KEY*
 *.pyc
 *.mp4
 sandbox.py
+
+# Added by cargo
+
+/target
+
+# Rust CLI run output (images, itinerary state, rendered video)
+/output/

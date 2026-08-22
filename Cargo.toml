@@ -1,0 +1,10 @@
+[package]
+name = "svmm"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+usage = { package = "usage-rs", version = "6.0.0", features = ["completions"] }
+
+[dev-dependencies]
+usage = { package = "usage-rs", version = "6.0.0", features = ["test"] }
