@@ -1,5 +1,6 @@
 mod directions;
 mod geo;
+mod itinerary;
 mod net;
 mod streetview;
 
