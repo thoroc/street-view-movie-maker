@@ -4,6 +4,38 @@ It makes movies out of Google Street View images!
 
 You provide point A and point B. It uses the Google Roads API to get directions from A to B, then repeatedly looks for Street View images along that path, and converts them into a movie.
 
+## Rust CLI (`svmm`)
+
+The tool has been ported to a Rust CLI (`svmm`), which is now the maintained way to run it — see [.context/plans/2026-08-22-port-street-view-movie-maker-to-rust-cli.md](.context/plans/2026-08-22-port-street-view-movie-maker-to-rust-cli.md) for the full design. The original Python implementation (`utils.py`, `street_crawl.py`) is kept for reference below; `hollerado_project.py` remains a one-off, non-reproducible script for a specific music video.
+
+### Setup
+
+1. Install [mise](https://mise.jdx.dev/) if you don't already have it, then run `mise install` in this directory — it pins the exact Rust toolchain and FFmpeg version the project needs, and wires up [hk](https://hk.jdx.dev/) git hooks (formatting/lint/test checks on commit and push).
+2. Set up a Google Cloud project with the **Directions API** and **Street View Static API** enabled (also enable the **Geocoding API** if you want to pass place names instead of coordinates — the Directions API relies on it under the hood for that).
+3. Export your API keys as environment variables — never pass them as flags:
+
+   ```sh
+   export STREETVIEW_API_KEY=...
+   export DIRECTIONS_API_KEY=...
+   ```
+
+### Usage
+
+```sh
+cargo run -- --from "45.517146,-73.579837" --to "43.676533,-79.357132" --output my_route
+```
+
+`--from`/`--to` accept either `"lat,lon"` or a free-text place name. Run `cargo run -- --help` for the full flag reference (tuning flags like `--picsize`/`--fov`/`--fps`, and pipeline flags like `--dry-run`, `--fresh`, `--concurrency`, `--output-dir`). Note: pass negative numeric values with `=`, e.g. `--pitch=-30`, not `--pitch -30` — otherwise it's read as an unrecognized flag.
+
+Downloaded images, itinerary state, and the rendered video all land under `--output-dir` (default `./output/<name>/`). Re-running the same `--output` name resumes from where it left off unless the route/tuning changed, in which case pass `--fresh` to start over.
+
+### Development
+
+- `cargo test` runs the unit and integration test suite. Two integration tests that hit the real, billed Google APIs are marked `#[ignore]` — run them explicitly with `cargo test -- --ignored` once your API keys are set.
+- `hk run check` / `hk fix` run the same formatting and lint checks as the git hooks, on demand.
+
+## Python original (reference)
+
 E.g., [here is a video](https://www.youtube.com/watch?v=puzhsLtn8AQ) taken along the Copacabana beach in Rio, with a little snippet of Senor Coconut's "Neon Lights (Cha Cha Cha)" added for fun:
 
 <a href="https://www.youtube.com/watch?v=puzhsLtn8AQ"><img src="copacabana.jpg" width=320/></a>
