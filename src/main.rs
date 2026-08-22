@@ -4,6 +4,7 @@ mod itinerary;
 mod lineup;
 mod net;
 mod streetview;
+mod video;
 
 use usage::Cli;
 
