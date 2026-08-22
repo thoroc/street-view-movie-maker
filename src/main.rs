@@ -1,3 +1,5 @@
+mod geo;
+
 use usage::Cli;
 
 /// Turn a route into a Street View movie
