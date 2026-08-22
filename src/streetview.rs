@@ -182,9 +182,13 @@ async fn fetch_with_retry(client: &reqwest::Client, url: &str) -> Result<Vec<u8>
     .await;
 
     result.map_err(|(attempts, err)| {
-        let message = match err {
+        let detail = match err {
             FetchError::Transient(m) | FetchError::Fatal(m) => m,
         };
+        // Redact the key even though `detail` shouldn't contain it — this is
+        // the request URL, and it's cheap insurance against a future error
+        // path that echoes it back verbatim.
+        let message = format!("{detail} (request: {})", redact_key(url));
         StreetviewError::Network { attempts, message }
     })
 }
