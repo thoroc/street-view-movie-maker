@@ -39,6 +39,7 @@ github:
       trustedGithubActions:
         - jdx/mise-action # Installs the pinned mise toolchain (mise.toml)
         - getplumber/plumber # Plumber's own GitHub Action
+        - Swatinem/rust-cache # Caches ~/.cargo and target/ across CI runs
 
     # ===========================================
     # Container images must not use forbidden tags
