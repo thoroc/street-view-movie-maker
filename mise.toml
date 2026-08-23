@@ -1,7 +1,11 @@
 [tools]
 hk = "1.55.0"
 pkl = "0.32.1"
-rust = "1.97.1"
+# components pinned explicitly: mise otherwise inherits whatever profile the
+# machine's ambient rustup defaults to, which is "default" (has clippy+rustfmt)
+# on a machine with prior rustup use but "minimal" (neither) on a fresh CI
+# runner — hk.pkl's cargo_fmt/cargo_clippy steps need both everywhere.
+rust = { version = "1.97.1", components = ["clippy", "rustfmt"] }
 ffmpeg = "9.0.1"
 fnox = "1.33.0"
 age = "1.3.1"

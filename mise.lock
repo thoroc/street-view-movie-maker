@@ -185,3 +185,6 @@ url_api = "https://api.github.com/repos/apple/pkl/releases/assets/487426668"
 [[tools.rust]]
 version = "1.97.1"
 backend = "core:rust"
+
+[tools.rust.options]
+components = "clippy,rustfmt"
