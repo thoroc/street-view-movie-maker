@@ -43,6 +43,22 @@ fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Si
 
 Every run prints the resolved route, the number of images it will download, and an estimated cost, then stops for confirmation (or exits immediately with `--dry-run`) before anything is downloaded. Nothing is downloaded without that gate unless you pass `--yes`.
 
+### Prefer prompts to flags? Use `--interactive`
+
+Don't want to memorise flag names, or unsure what `--fov`, `--radius`, or `--hop-size` should be? Pass `-i`/`--interactive` and the CLI asks for each value in turn, showing its default in brackets — press enter to accept it, or type a value to override:
+
+```sh
+fnox exec -- cargo run --release -- --interactive
+```
+
+`--interactive` fills in only what's missing. Combine it with any flags you already know:
+
+```sh
+fnox exec -- cargo run --release -- --interactive --from "Marseille Provence Airport" --to "Simiane-la-Rotonde"
+```
+
+Here `--from`/`--to` are used as given, and you're only prompted for `--output` and the remaining tuning flags. Without `--interactive`, any of `--from`/`--to`/`--output` left unset causes the CLI to error out and suggest `--interactive` instead of guessing a value for you.
+
 ## 4. Cost
 
 Prices below are from Google's published rate card (developers.google.com/maps/billing-and-pricing/pricing, checked 2026-08-23) — verify against the live console before relying on them at volume, since Google's pricing changes.

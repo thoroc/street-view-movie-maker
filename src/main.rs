@@ -14,55 +14,55 @@ use usage::Cli;
 struct Args {
     /// Origin: "lat,lon" or a free-text place/address
     #[usage(long)]
-    from: String,
+    from: Option<String>,
 
     /// Destination: "lat,lon" or a free-text place/address
     #[usage(long)]
-    to: String,
+    to: Option<String>,
 
     /// Output filestem / video name
     #[usage(long)]
-    output: String,
+    output: Option<String>,
 
     /// Root directory for this run's images, itinerary state, and video
     #[usage(long)]
     output_dir: Option<String>,
 
     /// Downloaded Street View image size
-    #[usage(long, default = "640x320")]
-    picsize: String,
+    #[usage(long)]
+    picsize: Option<String>,
 
     /// Street View camera field of view, in degrees
-    #[usage(long, default = "90")]
-    fov: u32,
+    #[usage(long)]
+    fov: Option<u32>,
 
     /// Street View camera pitch, in degrees
-    #[usage(long, default = "0")]
-    pitch: i32,
+    #[usage(long)]
+    pitch: Option<i32>,
 
     /// Street View search radius, in meters
-    #[usage(long, default = "5")]
-    radius: u32,
+    #[usage(long)]
+    radius: Option<u32>,
 
     /// Distance between interpolated route points, in meters
-    #[usage(long, default = "10")]
-    hop_size: u32,
+    #[usage(long)]
+    hop_size: Option<u32>,
 
     /// Heading delta, in degrees, that triggers a turn frame insertion
-    #[usage(long, default = "5")]
-    turn_threshold: u32,
+    #[usage(long)]
+    turn_threshold: Option<u32>,
 
     /// Output video frame rate
-    #[usage(long, default = "20")]
-    fps: u32,
+    #[usage(long)]
+    fps: Option<u32>,
 
     /// Skip the download confirmation prompt
     #[usage(long)]
     yes: bool,
 
     /// Max concurrent Street View requests
-    #[usage(long, default = "5")]
-    concurrency: usize,
+    #[usage(long)]
+    concurrency: Option<usize>,
 
     /// Probe and print the final image count, then exit without downloading
     #[usage(long)]
@@ -71,6 +71,187 @@ struct Args {
     /// Ignore persisted itinerary state and start over
     #[usage(long)]
     fresh: bool,
+
+    /// Prompt for any value not already given as a flag, showing each default as a suggestion
+    #[usage(long, short)]
+    interactive: bool,
+}
+
+/// Values used when a field is left unset outside of --interactive.
+const DEFAULT_PICSIZE: &str = "640x320";
+const DEFAULT_FOV: u32 = 90;
+const DEFAULT_PITCH: i32 = 0;
+const DEFAULT_RADIUS: u32 = 5;
+const DEFAULT_HOP_SIZE: u32 = 10;
+const DEFAULT_TURN_THRESHOLD: u32 = 5;
+const DEFAULT_FPS: u32 = 20;
+const DEFAULT_CONCURRENCY: usize = 5;
+
+/// Args with every field settled: either passed on the command line, filled in
+/// interactively, or defaulted. This is what the rest of `run()` operates on.
+struct ResolvedArgs {
+    from: String,
+    to: String,
+    output: String,
+    output_dir: Option<String>,
+    picsize: String,
+    fov: u32,
+    pitch: i32,
+    radius: u32,
+    hop_size: u32,
+    turn_threshold: u32,
+    fps: u32,
+    yes: bool,
+    concurrency: usize,
+    dry_run: bool,
+    fresh: bool,
+}
+
+fn prompt_line(label: &str) -> Result<String, String> {
+    print!("{label}: ");
+    std::io::Write::flush(&mut std::io::stdout()).map_err(|e| e.to_string())?;
+    let mut input = String::new();
+    std::io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| e.to_string())?;
+    Ok(input.trim().to_string())
+}
+
+fn prompt_required(label: &str) -> Result<String, String> {
+    loop {
+        let value = prompt_line(&format!("{label} (required)"))?;
+        if !value.is_empty() {
+            return Ok(value);
+        }
+        println!("  a value is required.");
+    }
+}
+
+fn prompt_optional(label: &str) -> Result<Option<String>, String> {
+    let value = prompt_line(label)?;
+    Ok(if value.is_empty() { None } else { Some(value) })
+}
+
+fn prompt_with_default(label: &str, default: &str) -> Result<String, String> {
+    let value = prompt_line(&format!("{label} [{default}]"))?;
+    Ok(if value.is_empty() {
+        default.to_string()
+    } else {
+        value
+    })
+}
+
+fn prompt_parsed<T>(label: &str, default: T) -> Result<T, String>
+where
+    T: std::fmt::Display + std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    loop {
+        let raw = prompt_line(&format!("{label} [{default}]"))?;
+        if raw.is_empty() {
+            return Ok(default);
+        }
+        match raw.parse::<T>() {
+            Ok(value) => return Ok(value),
+            Err(e) => println!("  invalid value: {e}. try again."),
+        }
+    }
+}
+
+fn missing_flag_error(flag: &str) -> String {
+    format!(
+        "the following required argument was not provided: {flag}\n\ntip: pass --interactive/-i to be prompted for it instead"
+    )
+}
+
+/// Fills in whatever `--interactive` didn't already get from flags, using each
+/// field's default as the suggested value; outside of `--interactive`, applies
+/// those same defaults directly and errors if a required field is still missing.
+fn resolve_args(raw: Args) -> Result<ResolvedArgs, String> {
+    if !raw.interactive {
+        return Ok(ResolvedArgs {
+            from: raw.from.ok_or_else(|| missing_flag_error("--from"))?,
+            to: raw.to.ok_or_else(|| missing_flag_error("--to"))?,
+            output: raw.output.ok_or_else(|| missing_flag_error("--output"))?,
+            output_dir: raw.output_dir,
+            picsize: raw.picsize.unwrap_or_else(|| DEFAULT_PICSIZE.to_string()),
+            fov: raw.fov.unwrap_or(DEFAULT_FOV),
+            pitch: raw.pitch.unwrap_or(DEFAULT_PITCH),
+            radius: raw.radius.unwrap_or(DEFAULT_RADIUS),
+            hop_size: raw.hop_size.unwrap_or(DEFAULT_HOP_SIZE),
+            turn_threshold: raw.turn_threshold.unwrap_or(DEFAULT_TURN_THRESHOLD),
+            fps: raw.fps.unwrap_or(DEFAULT_FPS),
+            concurrency: raw.concurrency.unwrap_or(DEFAULT_CONCURRENCY),
+            yes: raw.yes,
+            dry_run: raw.dry_run,
+            fresh: raw.fresh,
+        });
+    }
+
+    let from = match raw.from {
+        Some(v) => v,
+        None => prompt_required("Origin (\"lat,lon\" or a place/address)")?,
+    };
+    let to = match raw.to {
+        Some(v) => v,
+        None => prompt_required("Destination (\"lat,lon\" or a place/address)")?,
+    };
+    let output = match raw.output {
+        Some(v) => v,
+        None => prompt_required("Output filestem / video name")?,
+    };
+    let output_dir = match raw.output_dir {
+        Some(v) => Some(v),
+        None => prompt_optional(&format!("Output directory (blank for ./output/{output})"))?,
+    };
+
+    Ok(ResolvedArgs {
+        picsize: match raw.picsize {
+            Some(v) => v,
+            None => prompt_with_default("Downloaded Street View image size", DEFAULT_PICSIZE)?,
+        },
+        fov: match raw.fov {
+            Some(v) => v,
+            None => prompt_parsed("Street View camera field of view, in degrees", DEFAULT_FOV)?,
+        },
+        pitch: match raw.pitch {
+            Some(v) => v,
+            None => prompt_parsed("Street View camera pitch, in degrees", DEFAULT_PITCH)?,
+        },
+        radius: match raw.radius {
+            Some(v) => v,
+            None => prompt_parsed("Street View search radius, in meters", DEFAULT_RADIUS)?,
+        },
+        hop_size: match raw.hop_size {
+            Some(v) => v,
+            None => prompt_parsed(
+                "Distance between interpolated route points, in meters",
+                DEFAULT_HOP_SIZE,
+            )?,
+        },
+        turn_threshold: match raw.turn_threshold {
+            Some(v) => v,
+            None => prompt_parsed(
+                "Heading delta, in degrees, that triggers a turn frame insertion",
+                DEFAULT_TURN_THRESHOLD,
+            )?,
+        },
+        fps: match raw.fps {
+            Some(v) => v,
+            None => prompt_parsed("Output video frame rate", DEFAULT_FPS)?,
+        },
+        concurrency: match raw.concurrency {
+            Some(v) => v,
+            None => prompt_parsed("Max concurrent Street View requests", DEFAULT_CONCURRENCY)?,
+        },
+        from,
+        to,
+        output,
+        output_dir,
+        yes: raw.yes,
+        dry_run: raw.dry_run,
+        fresh: raw.fresh,
+    })
 }
 
 fn resolve_output_dir(output_dir: &Option<String>, name: &str) -> std::path::PathBuf {
@@ -146,7 +327,7 @@ async fn main() {
 /// end-to-end and interrupt-resume tests in tests/pipeline.rs, since it's
 /// mostly gluing already-tested modules together with real I/O.
 async fn run() -> Result<(), String> {
-    let args = Args::parse();
+    let args = resolve_args(Args::parse())?;
 
     let streetview_key = std::env::var("STREETVIEW_API_KEY").ok();
     let directions_key = std::env::var("DIRECTIONS_API_KEY").ok();
