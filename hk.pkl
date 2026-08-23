@@ -5,6 +5,10 @@ import "package://github.com/jdx/hk/releases/download/v1.55.0/hk@1.55.0#/Builtin
 local linters = new Mapping<String, Step> {
     ["cargo_fmt"] = Builtins.cargo_fmt
     ["cargo_clippy"] = Builtins.cargo_clippy
+    ["markdown_lint"] = (Builtins.markdown_lint) {
+        // Not yet linted/fixed; excluded so pre-existing violations there don't block unrelated commits.
+        exclude = List(".claude/skills/**", ".claude/instructions/**", ".claude/RULES.md")
+    }
 }
 
 local pre_push_steps = new Mapping<String, Step> {
