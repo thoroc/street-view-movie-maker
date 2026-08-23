@@ -1,5 +1,7 @@
 photos/*
 API_KEY*
+.env
+.env.*
 *.pyc
 *.mp4
 sandbox.py

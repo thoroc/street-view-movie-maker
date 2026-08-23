@@ -1,0 +1,4 @@
+[providers]
+age = { type = "age", recipients = ["age13ack6myrwtv68dh7h6k04yszmu4c4vks3fcmyjwcajxmme8hlp8q928nx3"], key_file = "~/.config/fnox/age.txt" }
+
+[secrets]
