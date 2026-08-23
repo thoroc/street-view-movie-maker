@@ -6,6 +6,8 @@ ffmpeg = "9.0.1"
 fnox = "1.33.0"
 age = "1.3.1"
 "npm:markdownlint-cli" = "0.49.1"
+"npm:aislop" = "0.14.1"
+"npm:ctxharness" = "0.4.6"
 
 [hooks]
 enter = "mise install"
@@ -14,3 +16,23 @@ postinstall = "hk install --mise"
 [tasks.build]
 description = "Build the CLI"
 run = "cargo build"
+
+[tasks.check]
+description = "Fast compiler check without a full build"
+run = "cargo check --locked"
+
+[tasks.test]
+description = "Run the test suite"
+run = "cargo test --locked"
+
+[tasks.ctx]
+description = "Check AI instruction files (CLAUDE.md) for drift"
+run = "ctxharness run --no-trend"
+
+[tasks."slop:check"]
+description = "Run the aislop quality gate over the whole repo"
+run = "aislop ci"
+
+[tasks."slop:changes"]
+description = "Run the aislop quality gate over changed files (AISLOP_BASE, default HEAD)"
+run = "aislop ci --changes --base ${AISLOP_BASE:-HEAD}"
