@@ -44,6 +44,35 @@
         "minLength": 1
       },
       "description": "Relative paths to related .context files. Omit the field entirely if there are no related files."
+    },
+    "effort": {
+      "type": "string",
+      "enum": ["S", "M", "L", "TBD"],
+      "description": "T-shirt-sized effort estimate. Applies to PLAN; see .claude/instructions/value-rubric.md. Omit for types it doesn't apply to."
+    },
+    "value": {
+      "type": "string",
+      "enum": ["HIGH", "MEDIUM", "LOW"],
+      "description": "Benefit-of-action grade. Applies to PLAN/FINDING/KNOWN_ISSUE; see .claude/instructions/value-rubric.md. Omit for types it doesn't apply to."
+    },
+    "themes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["ROUTING", "STREETVIEW", "VIDEO", "CLI", "GOVERNANCE", "TOOLING"]
+      },
+      "description": "Ordered, primary-first subject-area tags from the controlled vocabulary. Applies to PLAN/FINDING/KNOWN_ISSUE; see .claude/instructions/theme-vocabulary.md. Omit for types it doesn't apply to."
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Free-form keyword tags, finer-grained than themes and not from a controlled vocabulary. Omit if there are none."
     }
   }
 }

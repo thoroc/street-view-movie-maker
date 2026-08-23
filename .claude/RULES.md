@@ -21,8 +21,14 @@ repository. See `.claude/skills/rules-management/` for how entries are added and
 
 **Rationale:** Stale or mismatched documentation actively misleads the next reader -- human or agent -- into following wrong guidance, and the cost compounds with every reader who trusts it before it's caught. This is not hypothetical: on 2026-08-23 the imported `.claude/instructions/` and `.claude/RULES.md` were found to still contain another project's regulatory language, GitLab-only workflow assumptions, AWS delivery-pipeline theme vocabulary, and references to skills (`mr-review`, `pr-author`) that don't exist in this repo -- all left over from the import despite an earlier pass claiming to have adapted them. That makes stale docs categorically different from ordinary code-quality cleanup, which is genuinely fine to defer.
 
-#### Rule: Create a handover file on session handover
+### Rule: Create a handover file on session handover
 
 **Directive:** ALWAYS create a handover file under .context/handover/<date>-<slug>.md when handing over a session to another agent or human, before concluding the work.
 
 **Rationale:** Handovers need a durable, discoverable resume point; a dated handover file under .context/handover/ gives the next session the current state, what was tried, and what remains without re-discovery.
+
+### Rule: Dig into git history when inspecting the project, and save findings
+
+**Directive:** When investigating this project's structure, past decisions, or how a feature came to be (e.g. inferring ADR candidates, auditing whether documentation matches reality), ALWAYS consult `git log`/`git show` on the relevant history, not just the current working tree and `.context/` files -- commit messages and diffs carry decisions and rationale that never made it into a plan or finding. Save what the investigation turns up as a `.context/findings/<date>-<slug>.md` file via the `context-file` skill, even when the immediate task was something else (e.g. an ADR-inference request), so the git-history research is discoverable later instead of living only in a chat transcript.
+
+**Rationale:** This repo's own commit history is denser with real decisions than its `.context/` plans alone -- e.g. the `fnox`/`age` secrets migration and the Python-to-Rust port's rejected alternatives are only fully visible in commit messages, not restated anywhere else. Treating git history as a first-class source, and persisting what it reveals, is what let five real ADR candidates get identified in one pass instead of being rediscovered piecemeal in future sessions.
