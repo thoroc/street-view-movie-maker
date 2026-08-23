@@ -6,7 +6,7 @@ You provide point A and point B. It uses the Google Roads API to get directions 
 
 ## Rust CLI (`svmm`)
 
-The tool has been ported to a Rust CLI (`svmm`), which is now the maintained way to run it. The original Python implementation (`utils.py`, `street_crawl.py`) is legacy, kept for reference below; `hollerado_project.py` remains a one-off, non-reproducible script for a specific music video.
+The tool has been ported to a Rust CLI (`svmm`), which is the only maintained way to run it. The original Python 2 implementation has been removed.
 
 ### Setup and usage
 
@@ -24,22 +24,6 @@ Every run prints the resolved route, image count, and an estimated cost, then wa
 
 - `cargo test` runs the unit and integration test suite. Two integration tests that hit the real, billed Google APIs are marked `#[ignore]` — run them explicitly with `cargo test -- --ignored` once your API keys are set.
 - `hk run check` / `hk fix` run the same formatting and lint checks as the git hooks, on demand.
-
-## Python original (legacy, reference only)
-
-This project started as a Python 2 script; it is no longer maintained and is kept here for reference. Use the Rust CLI above for anything new.
-
-E.g., [here is a video](https://www.youtube.com/watch?v=puzhsLtn8AQ) taken along the Copacabana beach in Rio, with a little snippet of Senor Coconut's "Neon Lights (Cha Cha Cha)" added for fun:
-
-<a href="https://www.youtube.com/watch?v=puzhsLtn8AQ"><img src="copacabana.jpg" width=320/></a>
-
-### Requirements (Python, legacy)
-
-To run this code yourself takes some fussing around:
-
-1. Make sure [FFMPEG](https://ffmpeg.org/) is installed and callable from the command line. I brew-installed it.
-2. pip-install this project's python [requirements](requirements.txt). The only packages you may not have are [googlemaps](https://pypi.org/project/googlemaps/) and [polyline](https://pypi.org/project/polyline/). Note: this project is written for Python 2.
-3. Lastly, and trickiest of all: the code requires API keys for Google Map's [Street View](https://developers.google.com/maps/documentation/streetview/get-api-key) and [Directions](https://developers.google.com/maps/documentation/directions/get-api-key) APIs. Note: setting up the Street View API now requires a billing account! it tends to be free for small amounts of traffic, but you have to set it up anyway.
 
 ## Project history
 

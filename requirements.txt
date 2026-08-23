@@ -1,7 +1,0 @@
-google-api-python-client
-googlemaps
-jsonschema
-numpy
-pandas
-polyline
-subprocess32
