@@ -14,7 +14,7 @@ Setup:
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create or select a project.
 2. In **APIs & Services → Library**, enable **Directions API**, **Street View Static API**, and **Geocoding API**.
-3. **Enable billing** on the project — Street View Static API requires it even though usage is often free at low volume (see [Cost](#cost) below).
+3. **Enable billing** on the project — Street View Static API requires it even though usage is often free at low volume (see [Cost](#4-cost) below).
 4. In **APIs & Services → Credentials**, create an API key. One key works across all three APIs. Optionally restrict it (API restrictions to just those three, and/or application restrictions) since it'll sit in your local secrets store.
 5. Official docs, if you want the detail: [Street View API key setup](https://developers.google.com/maps/documentation/streetview/get-api-key), [Directions API key setup](https://developers.google.com/maps/documentation/directions/get-api-key).
 
