@@ -24,6 +24,13 @@ jobs:
           # Authenticate mise's GitHub releases API calls so tool installs are not
           # capped at the 60 req/hr unauthenticated rate limit.
           github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Cache cargo registry and target dir
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # cargo-audit below is a CI tool, not a workspace dependency, so its own
+          # (large) dependency tree needs cache-all-crates to avoid a from-source
+          # recompile on every run.
+          cache-all-crates: "true"
       - name: Lint & format
         run: hk check --all
       - name: Check
