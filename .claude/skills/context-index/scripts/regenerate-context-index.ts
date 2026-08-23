@@ -2,7 +2,7 @@
 // Scans .context/**/*.md, parses frontmatter, and regenerates index.yaml.
 // Usage: regenerate-context-index.ts <root> <indexPath> <checkMode: "true"|"false">
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { relative } from 'node:path'
+import { dirname, relative, resolve } from 'node:path'
 
 type Entry = {
   title: string
@@ -90,11 +90,54 @@ const extractRelated = (raw: string): string[] => {
     .map((line) => line.trim().slice(2))
 }
 
-const main = (): void => {
-  const [root, indexPath, checkModeArg] = process.argv.slice(2)
-  const checkMode = checkModeArg === 'true'
-  const contextDir = `${root}/.context`
+// Findings are investigative input, not a standing task list: once the finding's recommendation
+// is *fully* actioned, it should move to done/superseded too. This can't detect "fully actioned"
+// on its own, but a finding whose every related plan is already `done` is a mechanical enough
+// signal to be worth a nudge — a finding is not fully actioned while even one related plan is
+// still open, so this only fires when ALL of them are done, not just one.
+const findStaleFindings = (
+  root: string,
+  entries: Entry[],
+): Array<{ path: string; title: string; relatedPaths: string[] }> => {
+  const byPath = new Map(entries.map((e) => [e.path, e]))
+  const stale: Array<{ path: string; title: string; relatedPaths: string[] }> = []
+  for (const e of entries) {
+    if (e.type !== 'finding' || e.status !== 'active' || !e.related?.length) continue
+    const fileDir = dirname(resolve(root, e.path))
+    const related = e.related
+      .map((r) => relative(root, resolve(fileDir, r)))
+      .map((relatedPath) => byPath.get(relatedPath))
+      .filter((target): target is Entry => target !== undefined)
+    if (related.length === e.related.length && related.every((t) => t.status === 'done')) {
+      stale.push({ path: e.path, title: e.title, relatedPaths: related.map((t) => t.path) })
+    }
+  }
+  return stale
+}
 
+const reportStaleFindings = (
+  stale: Array<{ path: string; title: string; relatedPaths: string[] }>,
+): void => {
+  if (stale.length === 0) return
+  console.error(
+    'NOTICE: active finding(s) whose related plan(s) are all already done (advisory, verify and update status):',
+  )
+  for (const f of stale) {
+    console.error(`  ${f.path} — ${f.relatedPaths.join(', ')} done: "${f.title}"`)
+  }
+  console.error()
+  console.error(
+    "If the finding's recommendation has been fully acted on, flip status to done/superseded and",
+  )
+  console.error(
+    "add an Outcome section. See ways-of-working.md, 'Keeping plans and findings in sync'.",
+  )
+}
+
+const scanContextFiles = (
+  root: string,
+  contextDir: string,
+): { missing: string[]; entries: Entry[] } => {
   const glob = new Bun.Glob('**/*.md')
   const missing: string[] = []
   const entries: Entry[] = []
@@ -129,13 +172,10 @@ const main = (): void => {
     entries.push(entry)
   }
 
-  if (missing.length > 0) {
-    console.error(
-      'WARNING: files with missing frontmatter (excluded from index):',
-    )
-    for (const f of missing) console.error(`  ${f}`)
-  }
+  return { missing, entries }
+}
 
+const buildIndexLines = (entries: Entry[]): string[] => {
   const grouped: Record<string, Entry[]> = {}
   for (const e of entries) {
     const key = TYPE_GROUP_KEY[e.type] ?? 'other'
@@ -176,8 +216,26 @@ const main = (): void => {
     }
     lines.push('')
   }
+  return lines
+}
 
-  const output = `${lines.join('\n')}\n`
+const main = (): void => {
+  const [root, indexPath, checkModeArg] = process.argv.slice(2)
+  const checkMode = checkModeArg === 'true'
+  const contextDir = `${root}/.context`
+
+  const { missing, entries } = scanContextFiles(root, contextDir)
+
+  if (missing.length > 0) {
+    console.error(
+      'WARNING: files with missing frontmatter (excluded from index):',
+    )
+    for (const f of missing) console.error(`  ${f}`)
+  }
+
+  reportStaleFindings(findStaleFindings(root, entries))
+
+  const output = `${buildIndexLines(entries).join('\n')}\n`
   if (checkMode) {
     const current = existsSync(indexPath) ? readFileSync(indexPath, 'utf8') : ''
     if (output !== current) {
