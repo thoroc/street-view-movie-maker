@@ -43,6 +43,20 @@ fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Si
 
 Every run prints the resolved route, the number of images it will download, and an estimated cost, then stops for confirmation (or exits immediately with `--dry-run`) before anything is downloaded. Nothing is downloaded without that gate unless you pass `--yes`.
 
+### What to expect
+
+Here's a single frame from a real run over a short, cheap demo route (Rue de Rivoli, by the Louvre), which resolved the route, downloaded 342 Street View frames along it, and encoded them into a video:
+
+![A frame from an svmm output video, showing the Louvre courtyard from street level](media/demo-baseline-run-frame.png)
+
+Reproduce it with `mise run demo`, or directly:
+
+```sh
+fnox exec -- cargo run --release -- --from "48.8611,2.3358" --to "48.8592,2.3376" --output demo --hop-size 500 --yes
+```
+
+A re-run resumes from `./output/demo` rather than re-downloading, so it's safe to run again after the first time.
+
 ### Prefer prompts to flags? Use `--interactive`
 
 Don't want to memorise flag names, or unsure what `--fov`, `--radius`, or `--hop-size` should be? Pass `-i`/`--interactive` and the CLI asks for each value in turn, showing its default in brackets — press enter to accept it, or type a value to override:
