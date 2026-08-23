@@ -35,7 +35,7 @@ guess a value grade from the plan's title alone.
 ## Themes
 
 An ordered list of one or more areas from the controlled vocabulary
-(`COLLECTION` / `DIGEST` / `DELIVERY` / `INFRA` / `GOVERNANCE` / `TOOLING`).
+(`ROUTING` / `STREETVIEW` / `VIDEO` / `CLI` / `GOVERNANCE` / `TOOLING`).
 The subject axis (what area the plan touches), orthogonal to value and effort.
 
 Write it **primary-first** -- `themes[0]` answers "what is this mainly about?"
@@ -51,20 +51,23 @@ invent a seventh without checking that file first.
 
 ```yaml
 ---
-title: "Plan: Add SQS DLQ redrive to the retry sweep"
+title: "Add route avoid-options (tolls, highways, ferries)"
 type: PLAN
 status: DRAFT
-date: "2026-08-01"
+date: "2026-08-23"
 effort: M
-value: HIGH
+value: MEDIUM
 themes:
-  - DELIVERY
-  - INFRA
+  - ROUTING
+  - CLI
 ---
 ```
 
-`DELIVERY` is primary because the redrive changes what happens to a failed
-delivery; `INFRA` is secondary because it also touches the SQS/Terraform
-layer. `value: HIGH` because it unblocks recovering deliveries that currently
-require a manual S3 replay. `effort: M` because it touches the retry sweep,
-the DLQ Terraform resource, and the runbook -- three files, one subsystem.
+(This is a real plan in this repo -- see
+`.context/plans/2026-08-23-add-route-avoid-options-tolls-highways-ferries.md`.)
+
+`ROUTING` is primary because the change is fundamentally about which Directions API query parameters get sent;
+`CLI` is secondary because it also adds new flags and interactive prompts. `value: MEDIUM` because it's a
+user-facing convenience matching a feature Google Maps itself offers, not a blocker for anything else. `effort: M`
+because it touches `directions.rs`, `main.rs`'s arg struct, `TuningParams`, and the route fingerprint -- several
+files, one subsystem.

@@ -124,7 +124,7 @@ either here just re-creates the machinery this skill was deliberately built to a
 **NEVER** file a real risk or open decision here because it's less ceremony than `risk-register`.
 **WHY:** `docs/TECH_DEBT.md` has no append-only guard and no audit trail -- a real risk filed here can be silently
 lost the moment its row is deleted, with nothing to notice.
-**BAD:** Filing "SES/DMARC deliverability blocked" as tech debt to skip risk-register's due-diligence step.
+**BAD:** Filing "Directions API retries could silently exhaust the free quota" as tech debt to skip risk-register's due-diligence step.
 **GOOD:** File it in `docs/RISK_REGISTER.md`, where deletion is blocked and the item can't quietly disappear.
 
 **NEVER** delete a row without checking whether the fix revealed a real cost or risk (Rule 3).

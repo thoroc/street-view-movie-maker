@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/thoroc/thoroc.github.io/blob/main/rules-management/assets/schemas/rule-entry.json",
+  "$id": "https://github.com/thoroc/street-view-movie-maker/blob/main/.claude/skills/rules-management/assets/schemas/rule-entry.json",
   "title": "Rule Entry",
   "description": "A single behavioural rule entry in .claude/RULES.md",
   "type": "object",

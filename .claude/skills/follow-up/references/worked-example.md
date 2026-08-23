@@ -1,15 +1,17 @@
 # Worked Example
 
-A fully filled-in report against this project's real state (checked 2026-08-14), followed by the blank,
-copy-pasteable template. Load this when drafting a report for the first time in a session, or when the shape of a
-section is unclear from `SKILL.md` alone.
+An illustrative, fully filled-in report, followed by the blank, copy-pasteable template. Load this when drafting a
+report for the first time in a session, or when the shape of a section is unclear from `SKILL.md` alone. This repo
+doesn't have `docs/RISK_REGISTER.md` or `docs/TECH_DEBT.md` yet, so the counts and row references below are
+hypothetical -- a real report always computes its counts fresh against whatever those files actually contain when
+they exist.
 
-## Real run, 2026-08-14
+## Illustrative run
 
-At this date, every filed follow-up is `DONE` -- 15 of 15. That is the expected steady state once a project's
-follow-up funnel has been running for a while, not an error condition, so the report falls straight through to the
-wider backlog rather than stopping at "nothing to report" (the first Anti-Pattern in `SKILL.md` exists precisely to
-head off that shortcut).
+Suppose every filed follow-up is `DONE` -- 15 of 15. That is the expected steady state once a project's follow-up
+funnel has been running for a while, not an error condition, so the report falls straight through to the wider
+backlog rather than stopping at "nothing to report" (the first Anti-Pattern in `SKILL.md` exists precisely to head
+off that shortcut).
 
 ```markdown
 ## Follow-up status
@@ -22,29 +24,29 @@ head off that shortcut).
   tier-1 PLAN/FINDING/KNOWN_ISSUE changes as items land and new ones are filed, so no single title stays accurate
   here].
 - Reactivation-eligible DEFERRED item(s): none found in this run.
-- Open RISK_REGISTER rows: 38 (of 43 total). Highest-leverage judgment call: row 5 ("CI runner `allowed_images`
-  allowlist opacity", Accepted Risk) -- it's recurring friction (every new CI job risks rediscovering the
-  restriction the hard way) rather than a one-off fix, so closing it removes a repeating cost instead of a single
-  instance of it.
-- Open TECH_DEBT rows: 7 (rows 6-12, all Open). Quickest win: row 7 ("Two exported functions in
-  `collectors/gitlab/fetch.ts`", Effort S) -- a mechanical single-file split with no design decision attached.
+- Open RISK_REGISTER rows: 6 (of 9 total). Highest-leverage judgment call: row 3 ("Directions API retry budget
+  under-documented", Accepted Risk) -- it's recurring friction (every future retry-tuning change risks
+  rediscovering the undocumented cap the hard way) rather than a one-off fix, so closing it removes a repeating
+  cost instead of a single instance of it.
+- Open TECH_DEBT rows: 4 (rows 2-5, all Open). Quickest win: row 3 ("Two helper functions in `streetview.rs` doing
+  the same dedupe check", Effort S) -- a mechanical single-file consolidation with no design decision attached.
 
 ## Recommended next item
 
-**RISK_REGISTER row 5 -- CI runner `allowed_images` allowlist opacity.** Judgment call, not rubric-sorted (register
-rows carry no `value` field -- see the Backlog Triage and Ranking reference). It outranks TECH_DEBT row 7 despite
-row 7 being the cheaper, faster fix: row 7 only ever saves the next person who touches that one file, while row 5's
-cost compounds on every future CI job that might hit the same undocumented allowlist wall -- exactly the
-leverage-over-effort tiebreak the value-rubric's grading criteria would apply if this row carried a formal grade.
-Next step: run `risk-register` to check whether documenting the known-allowed image set resolves it outright, or
-whether it needs an actual policy change first.
+**RISK_REGISTER row 3 -- Directions API retry budget under-documented.** Judgment call, not rubric-sorted (register
+rows carry no `value` field -- see the Backlog Triage and Ranking reference). It outranks TECH_DEBT row 3 despite
+row 3 being the cheaper, faster fix: row 3 only ever saves the next person who touches that one file, while row 3
+of the register's cost compounds on every future change to retry/backoff tuning -- exactly the leverage-over-effort
+tiebreak the value-rubric's grading criteria would apply if this row carried a formal grade. Next step: run
+`risk-register` to check whether documenting the current retry cap resolves it outright, or whether it needs an
+actual behaviour change first.
 ```
 
-Two things worth noting about this specific run: the value-rubric top pick is deliberately left as a placeholder
-above, not a fabricated title -- the actual top item changes as work lands, and printing a fixed example title here
-would go stale the first time this file is read after a plan closes. A real report always computes it fresh.
-Second, the "38 of 43" and "7" counts are grep-verified counts of `Open` rows, not estimates -- always report the
-same kind of grep-verified number, not an impression from skimming the file.
+Two things worth noting about worked examples like this one: the value-rubric top pick is deliberately left as a
+placeholder above, not a fabricated title -- the actual top item changes as work lands, and printing a fixed example
+title here would go stale the moment it's read after a plan closes. A real report always computes it fresh. Second,
+row counts like "6 of 9" and "4" should always be grep-verified counts of `Open` rows against the real files, not an
+impression from skimming or a number carried over from an example.
 
 ## Blank template
 

@@ -27,8 +27,8 @@ don't fit the technology under review:
 
 ## A gotcha this skill exists to prevent
 
-The single most common failure mode in past tech evaluations was accepting a subagent's claim about *this*
-repository's own constraints (bundling, an existing convention, a call site) without checking the source. A
-generic claim about "how Lambda bundling usually works" is not evidence about this project's actual `archive_file`
-Terraform resource -- it has been wrong before. Every dimension whose evidence concerns this repository specifically
-MUST be checked against the actual file, not answered from the subagent's training data.
+The single most common failure mode in tech evaluations is accepting a subagent's claim about *this* repository's
+own constraints (a dependency pin, an existing convention, a call site) without checking the source. A generic claim
+about "how crate X usually behaves" is not evidence about this project's actual `Cargo.toml`/`Cargo.lock` state.
+Every dimension whose evidence concerns this repository specifically MUST be checked against the actual file, not
+answered from the subagent's training data.

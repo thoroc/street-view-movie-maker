@@ -124,7 +124,7 @@ in `Decision` where it belongs.
 **NEVER** file a vague row ("investigate later", "might be an issue").
 **WHY:** An unactionable row is noise. **Consequence:** once a few vague rows accumulate, nobody trusts any row
 enough to act on it without re-investigating from scratch, defeating the point of keeping a register at all.
-**BAD:** `Description: Terraform stuff might need cleanup at some point.`
+**BAD:** `Description: Route fingerprinting stuff might need cleanup at some point.`
 **GOOD:** A concrete description plus a concrete, one-sentence risk if it stays unaddressed.
 
 **NEVER** cite a `.context/` file as where a row's extra detail lives.

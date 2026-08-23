@@ -15,7 +15,7 @@
         "title": {
           "type": "string",
           "minLength": 1,
-          "description": "e.g. 'Evaluating POML as the Bedrock digest prompt templating engine'"
+          "description": "e.g. 'Evaluating usage-rs as the CLI argument-parsing crate'"
         },
         "technology": {
           "type": "string",

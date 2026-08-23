@@ -15,18 +15,18 @@ Current values (add a new one only when an item genuinely doesn't fit an existin
 
 - `Code quality` -- lint/style violations, unsafe patterns, dead code. Does NOT cover the one-export-per-module
   convention -- that's `Module structure` below, split out once the evidence showed up (see Revisit trigger log).
-- `Module structure` -- a file violates the one-exported-symbol-per-module convention
-  (`.claude/instructions/typescript-standards.md` Rule 2): more than one exported function in a file, a helper
-  function exported alongside the file's real function, or an exported constant co-located with the file's one
-  function. No lint rule enforces this convention (it's manual, not a Biome rule), which is why it recurs across
-  unrelated files without ever failing the build.
+- `Module structure` -- a module grew responsibilities it shouldn't have picked up: a function doing two unrelated
+  things, a helper that belongs in its own module, or a struct/impl that's outgrown its file. No lint rule enforces
+  this (`cargo clippy` catches complexity smells, not module boundaries), which is why it recurs across unrelated
+  files without ever failing the build.
 - `Testing` -- a test that doesn't actually exercise what it claims to (over-mocked, assertion doesn't tie to the
   behaviour under test), where the real regression risk is independently covered elsewhere. If nothing else covers
   the regression risk, that's `RISK_REGISTER.md`, not this doc -- see Rule 3 in `SKILL.md`.
 - `Observability` -- a gap in logs, metrics, or diagnosability that makes it harder to tell why something failed,
   with no existing gate that would catch it.
-- `Infrastructure` -- a leftover or misconfigured cloud/Terraform resource with no functional impact today but an
-  ongoing cost or a stale dependency (an orphaned key, an unused resource left behind by a migration).
+- `Infrastructure` -- a leftover or misconfigured local toolchain/build artefact with no functional impact today but
+  an ongoing cost or a stale dependency (an unused `mise.toml` tool pin, a leftover `hk.pkl` job for a check that no
+  longer applies).
 - `Tooling` -- a gap in this project's own development or audit tooling/process (not the product's runtime code),
   e.g. a missing freshness or consistency check in an internal script or an external tool integration.
 
@@ -34,13 +34,12 @@ Current values (add a new one only when an item genuinely doesn't fit an existin
 `theme-vocabulary.md`'s own split-on-evidence threshold). AVOID splitting pre-emptively -- TYPICALLY one value covers
 a project's entire early life; only split once the evidence (the 30% threshold) actually shows up.
 
-**Trigger log**: `Code quality` hit the threshold on 2026-08-14 (5 of 8 open rows, ~63%) -- but all five turned out
-to be the exact same convention violation applied to different files, not five distinct kinds of code-quality issue.
-The split that restores discriminating power here isn't dividing one big bucket into several medium ones; it's
-recognizing the whole cluster was mislabeled under a too-generic name and giving it the specific one (`Module
-structure`) it actually needed. `Code quality` itself currently has zero rows again as a result -- that's expected,
-not a sign the value should be removed; it stays available for the next lint/style/dead-code item that isn't this
-specific pattern.
+**Trigger log**: none yet -- `docs/TECH_DEBT.md` doesn't exist in this repo yet. Record an entry here the first time
+an `area` value actually hits the 30% threshold, so future sessions have a real precedent instead of a hypothetical.
+The shape such an entry should take: if `Code quality` accumulated several rows that turned out to be the exact same
+convention violation applied to different files, not distinct kinds of code-quality issue, the split that restores
+discriminating power isn't dividing one big bucket into several medium ones -- it's recognizing the whole cluster was
+mislabeled under a too-generic name and giving it a specific one (like `Module structure`) instead.
 
 ## Row Schema
 
