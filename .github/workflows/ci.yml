@@ -18,6 +18,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # ffmpeg is mise-pinned via the asdf plugin, which builds from source;
+      # nasm isn't preinstalled on the runner and the build fails without it.
+      - name: Install ffmpeg build dependencies
+        run: sudo apt-get update && sudo apt-get install -y nasm
       - name: Setup mise
         uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
         with:
