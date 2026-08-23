@@ -35,6 +35,10 @@ run = "cargo test --locked"
 description = "Check AI instruction files (CLAUDE.md) for drift"
 run = "ctxharness run --no-trend"
 
+[tasks.demo]
+description = "Run a short, cheap demo route (Rue de Rivoli, by the Louvre) end-to-end — resumes from ./output/demo if it already exists"
+run = "fnox exec -- cargo run --release -- --from \"48.8611,2.3358\" --to \"48.8592,2.3376\" --output demo --hop-size 500 --yes"
+
 [tasks."slop:check"]
 description = "Run the aislop quality gate over the whole repo"
 run = "aislop ci"
