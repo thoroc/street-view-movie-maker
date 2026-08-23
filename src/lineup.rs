@@ -142,7 +142,7 @@ mod tests {
         let src_dir = temp_dir();
         let dest_dir = temp_dir();
         let a = write_file(&src_dir, "orig.jpg", b"content");
-        renumber_sequentially(&[a.clone()], &dest_dir, "frame").unwrap();
+        renumber_sequentially(std::slice::from_ref(&a), &dest_dir, "frame").unwrap();
         assert!(a.exists());
         let _ = std::fs::remove_dir_all(&src_dir);
         let _ = std::fs::remove_dir_all(&dest_dir);
