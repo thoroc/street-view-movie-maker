@@ -75,6 +75,18 @@ struct Args {
     /// Prompt for any value not already given as a flag, showing each default as a suggestion
     #[usage(long, short)]
     interactive: bool,
+
+    /// Avoid tolls when routing (matches Google Maps' "Avoid tolls" toggle)
+    #[usage(long)]
+    avoid_tolls: bool,
+
+    /// Avoid highways when routing (matches Google Maps' "Avoid highways" toggle)
+    #[usage(long)]
+    avoid_highways: bool,
+
+    /// Avoid ferries when routing (matches Google Maps' "Avoid ferries" toggle)
+    #[usage(long)]
+    avoid_ferries: bool,
 }
 
 /// Values used when a field is left unset outside of --interactive.
@@ -105,6 +117,9 @@ struct ResolvedArgs {
     concurrency: usize,
     dry_run: bool,
     fresh: bool,
+    avoid_tolls: bool,
+    avoid_highways: bool,
+    avoid_ferries: bool,
 }
 
 fn prompt_line(label: &str) -> Result<String, String> {
@@ -139,6 +154,19 @@ fn prompt_with_default(label: &str, default: &str) -> Result<String, String> {
     } else {
         value
     })
+}
+
+fn prompt_bool_with_default(label: &str, default: bool) -> Result<bool, String> {
+    let hint = if default { "Y/n" } else { "y/N" };
+    loop {
+        let raw = prompt_line(&format!("{label} [{hint}]"))?;
+        match raw.trim().to_lowercase().as_str() {
+            "" => return Ok(default),
+            "y" | "yes" => return Ok(true),
+            "n" | "no" => return Ok(false),
+            _ => println!("  please answer y or n."),
+        }
+    }
 }
 
 fn prompt_parsed<T>(label: &str, default: T) -> Result<T, String>
@@ -185,6 +213,9 @@ fn resolve_args(raw: Args) -> Result<ResolvedArgs, String> {
             yes: raw.yes,
             dry_run: raw.dry_run,
             fresh: raw.fresh,
+            avoid_tolls: raw.avoid_tolls,
+            avoid_highways: raw.avoid_highways,
+            avoid_ferries: raw.avoid_ferries,
         });
     }
 
@@ -243,6 +274,21 @@ fn resolve_args(raw: Args) -> Result<ResolvedArgs, String> {
         concurrency: match raw.concurrency {
             Some(v) => v,
             None => prompt_parsed("Max concurrent Street View requests", DEFAULT_CONCURRENCY)?,
+        },
+        avoid_tolls: if raw.avoid_tolls {
+            true
+        } else {
+            prompt_bool_with_default("Avoid tolls", false)?
+        },
+        avoid_highways: if raw.avoid_highways {
+            true
+        } else {
+            prompt_bool_with_default("Avoid highways", false)?
+        },
+        avoid_ferries: if raw.avoid_ferries {
+            true
+        } else {
+            prompt_bool_with_default("Avoid ferries", false)?
         },
         from,
         to,
@@ -350,7 +396,18 @@ async fn run() -> Result<(), String> {
         fov: args.fov,
         pitch: args.pitch,
         radius: args.radius,
+        avoid_tolls: args.avoid_tolls,
+        avoid_highways: args.avoid_highways,
+        avoid_ferries: args.avoid_ferries,
     };
+    let avoid: Vec<directions::AvoidFeature> = [
+        (args.avoid_tolls, directions::AvoidFeature::Tolls),
+        (args.avoid_highways, directions::AvoidFeature::Highways),
+        (args.avoid_ferries, directions::AvoidFeature::Ferries),
+    ]
+    .into_iter()
+    .filter_map(|(enabled, feature)| enabled.then_some(feature))
+    .collect();
     let fingerprint = itinerary::route_fingerprint(&args.from, &args.to, &tuning);
     let existing = itinerary::load_from(&paths.itinerary_path).map_err(|e| e.to_string())?;
     let decision = itinerary::resolve_resume(existing, &fingerprint, args.fresh);
@@ -368,10 +425,15 @@ async fn run() -> Result<(), String> {
         itinerary::ResumeDecision::Fresh => {
             let origin = directions::parse_route_endpoint(&args.from);
             let destination = directions::parse_route_endpoint(&args.to);
-            let route =
-                directions::fetch_directions(&client, &directions_key, &origin, &destination)
-                    .await
-                    .map_err(|e| e.to_string())?;
+            let route = directions::fetch_directions(
+                &client,
+                &directions_key,
+                &origin,
+                &destination,
+                &avoid,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
 
             let mut points: Vec<(f64, f64)> = Vec::new();
             if route.points.len() < 2 {

@@ -59,6 +59,16 @@ fnox exec -- cargo run --release -- --interactive --from "Marseille Provence Air
 
 Here `--from`/`--to` are used as given, and you're only prompted for `--output` and the remaining tuning flags. Without `--interactive`, any of `--from`/`--to`/`--output` left unset causes the CLI to error out and suggest `--interactive` instead of guessing a value for you.
 
+### Steering the route: `--avoid-tolls`/`--avoid-highways`/`--avoid-ferries`
+
+These mirror Google Maps' own "Avoid tolls/highways/ferries" toggles: pass any combination to steer the one route the Directions API returns away from that feature. All three default to off (avoid nothing), matching Maps' own default:
+
+```sh
+fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde" --output my_trip --avoid-tolls --avoid-highways
+```
+
+Under `--interactive`, you're prompted for each (y/N) alongside the other tuning values.
+
 ## 4. Cost
 
 Prices below are from Google's published rate card (developers.google.com/maps/billing-and-pricing/pricing, checked 2026-08-23) — verify against the live console before relying on them at volume, since Google's pricing changes.

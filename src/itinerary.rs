@@ -100,6 +100,9 @@ pub struct TuningParams {
     pub fov: u32,
     pub pitch: i32,
     pub radius: u32,
+    pub avoid_tolls: bool,
+    pub avoid_highways: bool,
+    pub avoid_ferries: bool,
 }
 
 /// Hashes the resolved route endpoints plus tuning flags into a short
@@ -118,6 +121,11 @@ pub fn route_fingerprint(from: &str, to: &str, tuning: &TuningParams) -> String 
     hasher.update(tuning.fov.to_le_bytes());
     hasher.update(tuning.pitch.to_le_bytes());
     hasher.update(tuning.radius.to_le_bytes());
+    hasher.update([
+        tuning.avoid_tolls as u8,
+        tuning.avoid_highways as u8,
+        tuning.avoid_ferries as u8,
+    ]);
     hasher
         .finalize()
         .iter()
@@ -202,6 +210,9 @@ mod tests {
             fov: 90,
             pitch: 0,
             radius: 5,
+            avoid_tolls: false,
+            avoid_highways: false,
+            avoid_ferries: false,
         }
     }
 
@@ -347,6 +358,15 @@ mod tests {
     fn route_fingerprint_differs_when_tuning_differs() {
         let mut other = tuning();
         other.hop_size = 20.0;
+        let a = route_fingerprint("45.0,-73.0", "43.0,-79.0", &tuning());
+        let b = route_fingerprint("45.0,-73.0", "43.0,-79.0", &other);
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn route_fingerprint_differs_when_avoid_flags_differ() {
+        let mut other = tuning();
+        other.avoid_tolls = true;
         let a = route_fingerprint("45.0,-73.0", "43.0,-79.0", &tuning());
         let b = route_fingerprint("45.0,-73.0", "43.0,-79.0", &other);
         assert_ne!(a, b);

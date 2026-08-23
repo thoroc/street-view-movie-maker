@@ -26,6 +26,24 @@ pub fn parse_route_endpoint(input: &str) -> RouteEndpoint {
     RouteEndpoint::PlaceName(input.to_string())
 }
 
+/// Mirrors Google Maps' own "Avoid tolls/highways/ferries" route toggles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AvoidFeature {
+    Tolls,
+    Highways,
+    Ferries,
+}
+
+impl AvoidFeature {
+    fn as_query_token(&self) -> &'static str {
+        match self {
+            AvoidFeature::Tolls => "tolls",
+            AvoidFeature::Highways => "highways",
+            AvoidFeature::Ferries => "ferries",
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum DirectionsError {
     #[error("Directions API request denied (check your API key and enabled APIs): {0}")]
@@ -131,6 +149,33 @@ pub fn parse_directions_response(body: &str) -> Result<ResolvedRoute, Directions
 const DIRECTIONS_ENDPOINT: &str = "https://maps.googleapis.com/maps/api/directions/json";
 const MAX_ATTEMPTS: u32 = 4;
 
+/// Builds the Directions API query params, omitting `avoid` entirely when
+/// no feature is selected (matching "avoid nothing" as the default). Kept
+/// pure and separate from `fetch_directions` so it's unit testable without a
+/// network call (mirrors `streetview::build_url`).
+fn build_directions_params(
+    origin: &RouteEndpoint,
+    destination: &RouteEndpoint,
+    api_key: &str,
+    avoid: &[AvoidFeature],
+) -> Vec<(&'static str, String)> {
+    let mut params = vec![
+        ("origin", origin.as_directions_param()),
+        ("destination", destination.as_directions_param()),
+        ("mode", "driving".to_string()),
+        ("key", api_key.to_string()),
+    ];
+    if !avoid.is_empty() {
+        let joined = avoid
+            .iter()
+            .map(AvoidFeature::as_query_token)
+            .collect::<Vec<_>>()
+            .join("|");
+        params.push(("avoid", joined));
+    }
+    params
+}
+
 #[derive(Debug)]
 enum FetchError {
     Transient(String),
@@ -148,13 +193,9 @@ pub async fn fetch_directions(
     api_key: &str,
     origin: &RouteEndpoint,
     destination: &RouteEndpoint,
+    avoid: &[AvoidFeature],
 ) -> Result<ResolvedRoute, DirectionsError> {
-    let params = [
-        ("origin", origin.as_directions_param()),
-        ("destination", destination.as_directions_param()),
-        ("mode", "driving".to_string()),
-        ("key", api_key.to_string()),
-    ];
+    let params = build_directions_params(origin, destination, api_key, avoid);
 
     let result = crate::net::with_retry(
         MAX_ATTEMPTS,
@@ -314,5 +355,45 @@ mod tests {
     fn malformed_json_maps_to_parse_error() {
         let err = parse_directions_response("not json").unwrap_err();
         assert!(matches!(err, DirectionsError::Parse(_)));
+    }
+
+    fn find_avoid_param<'a>(params: &'a [(&'static str, String)]) -> Option<&'a str> {
+        params
+            .iter()
+            .find(|(key, _)| *key == "avoid")
+            .map(|(_, value)| value.as_str())
+    }
+
+    #[test]
+    fn build_directions_params_omits_avoid_when_no_feature_selected() {
+        let origin = RouteEndpoint::Coordinates(45.0, -73.0);
+        let destination = RouteEndpoint::Coordinates(43.0, -79.0);
+        let params = build_directions_params(&origin, &destination, "key", &[]);
+        assert_eq!(find_avoid_param(&params), None);
+    }
+
+    #[test]
+    fn build_directions_params_includes_single_avoid_token() {
+        let origin = RouteEndpoint::Coordinates(45.0, -73.0);
+        let destination = RouteEndpoint::Coordinates(43.0, -79.0);
+        let params = build_directions_params(&origin, &destination, "key", &[AvoidFeature::Tolls]);
+        assert_eq!(find_avoid_param(&params), Some("tolls"));
+    }
+
+    #[test]
+    fn build_directions_params_pipe_joins_multiple_avoid_tokens() {
+        let origin = RouteEndpoint::Coordinates(45.0, -73.0);
+        let destination = RouteEndpoint::Coordinates(43.0, -79.0);
+        let params = build_directions_params(
+            &origin,
+            &destination,
+            "key",
+            &[
+                AvoidFeature::Tolls,
+                AvoidFeature::Highways,
+                AvoidFeature::Ferries,
+            ],
+        );
+        assert_eq!(find_avoid_param(&params), Some("tolls|highways|ferries"));
     }
 }
