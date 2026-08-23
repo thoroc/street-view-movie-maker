@@ -20,11 +20,22 @@ local pre_push_steps = new Mapping<String, Step> {
     }
 }
 
+// .context/ is untracked working state (see ways-of-working.md), so it never shows up as a
+// staged file for a glob-filtered step to match. This step has no glob, so it always runs,
+// keeping .context/index.yaml from drifting out of sync with plan/finding frontmatter.
+local pre_commit_steps = (linters) {
+    ["context_index"] {
+        // .context/ never carries into a fresh worktree (untracked, see ways-of-working.md),
+        // so no-op there instead of failing every commit made from one.
+        fix = "test -d .context && .claude/skills/context-index/scripts/regenerate-context-index.sh || true"
+    }
+}
+
 hooks {
     ["pre-commit"] {
         fix = true
         stash = "git"
-        steps = linters
+        steps = pre_commit_steps
     }
     ["pre-push"] {
         steps = pre_push_steps
