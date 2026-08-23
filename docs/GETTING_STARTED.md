@@ -4,16 +4,17 @@ This covers getting Google API credentials, storing them safely, running the CLI
 
 ## 1. Get Google API credentials
 
-The CLI calls two Google Maps Platform APIs directly, and relies on a third indirectly:
+The CLI calls three Google Maps Platform APIs directly, and relies on a fourth indirectly:
 
 - **Directions API** — turns `--from`/`--to` into a route.
 - **Street View Static API** — downloads the actual frames.
+- **Maps Static API** — fetches the one inset route-map image shown in a frame corner by default (see [Inset route map](#inset-route-map---hide-map--map-corner--map-size) below); skip enabling it if you always pass `--hide-map`.
 - **Geocoding API** (indirect) — when `--from`/`--to` is a place name rather than `"lat,lon"`, the Directions API resolves it internally using Geocoding. You don't call it yourself, but it must be enabled on your project or place-name resolution fails.
 
 Setup:
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create or select a project.
-2. In **APIs & Services → Library**, enable **Directions API**, **Street View Static API**, and **Geocoding API**.
+2. In **APIs & Services → Library**, enable **Directions API**, **Street View Static API**, **Maps Static API**, and **Geocoding API**.
 3. **Enable billing** on the project — Street View Static API requires it even though usage is often free at low volume (see [Cost](#4-cost) below).
 4. In **APIs & Services → Credentials**, create an API key. One key works across all three APIs. Optionally restrict it (API restrictions to just those three, and/or application restrictions) since it'll sit in your local secrets store.
 5. Official docs, if you want the detail: [Street View API key setup](https://developers.google.com/maps/documentation/streetview/get-api-key), [Directions API key setup](https://developers.google.com/maps/documentation/directions/get-api-key).
@@ -83,6 +84,20 @@ fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Si
 
 Under `--interactive`, you're prompted for each (y/N) alongside the other tuning values.
 
+### Inset route map: `--hide-map`/`--map-corner`/`--map-size`
+
+Every run composites a small inset map of the whole route into a frame corner, with a marker that moves along the route as the video progresses. It's on by default:
+
+```sh
+fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde" --output my_trip --map-corner top-left
+```
+
+- `--hide-map` turns it off entirely (no Maps Static API call, no cost line, no `composited/` output directory — the video is built straight from the downloaded frames).
+- `--map-corner` picks which corner it sits in: `top-left`, `top-right`, `bottom-left`, or `bottom-right` (default).
+- `--map-size` (default `200x200`) sets the *fetched* map image's resolution, not its on-frame size — the inset's on-frame footprint is a fixed percentage of the frame's shorter dimension, so it stays proportionally consistent across different `--picsize` aspect ratios.
+
+Only one Maps Static API call happens per run, regardless of frame count — the base map image is fetched once and cached at `<output-dir>/map_<map-size>.png`; the moving marker is drawn locally on a copy of that image for each frame. If the project behind `DIRECTIONS_API_KEY` doesn't have the Maps Static API enabled, the run doesn't fail — it prints a one-time message and finishes the video without the inset instead.
+
 ## 4. Cost
 
 Prices below are from Google's published rate card (developers.google.com/maps/billing-and-pricing/pricing, checked 2026-08-23) — verify against the live console before relying on them at volume, since Google's pricing changes.
@@ -92,6 +107,7 @@ Prices below are from Google's published rate card (developers.google.com/maps/b
 | Street View **metadata** probe (checking if a panorama exists at a point) | Free, unlimited | n/a |
 | Street View **Static** image (the actual downloaded frame) | $7.00 / 1,000 | First 10,000 |
 | Directions (one call per run) | $5.00 / 1,000 | First 10,000 |
+| Maps Static (one call per run, for the inset map — skipped entirely with `--hide-map`) | $2.00 / 1,000 | First 10,000 |
 
 The CLI can't see how much of your monthly free allowance you've already used, so the cost line it prints is a **worst-case estimate assuming none remains** — the real charge may be $0. Use `--dry-run` to see the resolved route, image count, and cost estimate without downloading anything (note: the one Directions call still happens and is billed, negligibly, under `--dry-run` too).
 
