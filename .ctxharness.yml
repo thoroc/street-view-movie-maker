@@ -1,0 +1,135 @@
+# ctxharness configuration — validate CLAUDE.md's claims against the repo
+# Run: ctxharness run --no-trend
+version: 1
+
+files:
+  include:
+    - "CLAUDE.md"
+  exclude:
+    - "target/**"
+    - "output/**"
+
+assertions:
+  # ---- L1: docs CLAUDE.md points readers at ----
+  - id: root-readme
+    extractor: fileExists
+    extractorArgs:
+      path: readme.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: "readme.md"
+  - id: root-getting-started
+    extractor: fileExists
+    extractorArgs:
+      path: docs/GETTING_STARTED.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: "docs/GETTING_STARTED.md"
+
+  # ---- L1: instruction files CLAUDE.md @-imports ----
+  - id: instr-ways-of-working
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/ways-of-working.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/ways-of-working.md"
+  - id: instr-planning-flow
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/planning-flow.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/planning-flow.md"
+  - id: instr-value-rubric
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/value-rubric.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/value-rubric.md"
+  - id: instr-theme-vocabulary
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/theme-vocabulary.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/theme-vocabulary.md"
+  - id: instr-follow-up-triage
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/follow-up-triage.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/follow-up-triage.md"
+  - id: instr-rule-of-three
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/rule-of-three.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/rule-of-three.md"
+  - id: instr-skill-authoring
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/skill-authoring.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/skill-authoring.md"
+  - id: instr-rtk
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/rtk.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/rtk.md"
+  - id: instr-aislop
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/aislop.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/aislop.md"
+  - id: instr-code-review-graph
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/code-review-graph.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/code-review-graph.md"
+  - id: instr-context-mode
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/context-mode.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/context-mode.md"
+  - id: instr-qmd
+    extractor: fileExists
+    extractorArgs:
+      path: .claude/instructions/qmd.md
+    scanner: literalInMd
+    scannerArgs:
+      literal: ".claude/instructions/qmd.md"
+
+  # ---- L2: instruction quality ----
+  - id: no-vague-language
+    extractor: constant
+    extractorArgs:
+      value: check
+    scanner: vaguenessPattern
+  - id: instruction-balance
+    extractor: constant
+    extractorArgs:
+      value: check
+    scanner: negativeConstraintDensity
+    scannerArgs:
+      minRatio: 1.0
+  - id: context-budget
+    extractor: constant
+    extractorArgs:
+      value: check
+    scanner: contextBudget
+    scannerArgs:
+      maxTokens: 4000
+      followImports: false

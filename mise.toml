@@ -1,11 +1,19 @@
 [tools]
 hk = "1.55.0"
 pkl = "0.32.1"
-rust = "1.97.1"
-ffmpeg = "9.0.1"
+# components pinned explicitly: mise otherwise inherits whatever profile the
+# machine's ambient rustup defaults to, which is "default" (has clippy+rustfmt)
+# on a machine with prior rustup use but "minimal" (neither) on a fresh CI
+# runner — hk.pkl's cargo_fmt/cargo_clippy steps need both everywhere.
+rust = { version = "1.97.1", components = ["clippy", "rustfmt"] }
+# conda-forge ships a prebuilt binary at this exact version, avoiding the
+# asdf plugin's from-source build (which needs nasm and is much slower in CI).
+"conda:ffmpeg" = "9.0.1"
 fnox = "1.33.0"
 age = "1.3.1"
 "npm:markdownlint-cli" = "0.49.1"
+"npm:aislop" = "0.14.1"
+"npm:ctxharness" = "0.4.6"
 
 [hooks]
 enter = "mise install"
@@ -14,3 +22,23 @@ postinstall = "hk install --mise"
 [tasks.build]
 description = "Build the CLI"
 run = "cargo build"
+
+[tasks.check]
+description = "Fast compiler check without a full build"
+run = "cargo check --locked"
+
+[tasks.test]
+description = "Run the test suite"
+run = "cargo test --locked"
+
+[tasks.ctx]
+description = "Check AI instruction files (CLAUDE.md) for drift"
+run = "ctxharness run --no-trend"
+
+[tasks."slop:check"]
+description = "Run the aislop quality gate over the whole repo"
+run = "aislop ci"
+
+[tasks."slop:changes"]
+description = "Run the aislop quality gate over changed files (AISLOP_BASE, default HEAD)"
+run = "aislop ci --changes --base ${AISLOP_BASE:-HEAD}"
