@@ -8,40 +8,17 @@ You provide point A and point B. It uses the Google Roads API to get directions 
 
 The tool has been ported to a Rust CLI (`svmm`), which is now the maintained way to run it — see [.context/plans/2026-08-22-port-street-view-movie-maker-to-rust-cli.md](.context/plans/2026-08-22-port-street-view-movie-maker-to-rust-cli.md) for the full design. The original Python implementation (`utils.py`, `street_crawl.py`) is kept for reference below; `hollerado_project.py` remains a one-off, non-reproducible script for a specific music video.
 
-### Setup
+### Setup and usage
 
-1. Install [mise](https://mise.jdx.dev/) if you don't already have it, then run `mise install` in this directory — it pins the exact Rust toolchain, FFmpeg, and secrets-tooling versions the project needs, and wires up [hk](https://hk.jdx.dev/) git hooks (formatting/lint/test checks on commit and push).
-2. Set up a Google Cloud project with the **Directions API** and **Street View Static API** enabled (also enable the **Geocoding API** if you want to pass place names instead of coordinates — the Directions API relies on it under the hood for that).
-3. Store your two API keys with [fnox](https://fnox.jdx.dev/) rather than a plaintext `.env` file — `fnox.toml` in this repo is already configured with an `age` provider, so only the encrypted ciphertext ever gets committed:
+Full instructions — getting Google API credentials, storing them with [fnox](https://fnox.jdx.dev/) instead of a plaintext `.env`, running the CLI, and understanding what a run costs before you commit to it — are in **[docs/getting-started.md](docs/getting-started.md)**.
 
-   ```sh
-   # one-time: generate your local age key if you don't already have one
-   mkdir -p ~/.config/fnox && age-keygen -o ~/.config/fnox/age.txt
-
-   # add your key as a recipient in fnox.toml (see the [providers] section), then:
-   fnox set STREETVIEW_API_KEY --provider age
-   fnox set DIRECTIONS_API_KEY --provider age
-
-   # run the CLI with secrets loaded as env vars
-   fnox exec -- cargo run -- --from "..." --to "..." --output my_route
-
-   # or load them into your shell automatically when you cd into this repo
-   eval "$(fnox activate bash)"  # or zsh/fish — see fnox docs
-   ```
-
-   `fnox set` prompts for the value interactively rather than taking it as a command-line argument, so it never lands in shell history.
-
-### Usage
+Quick start once `mise install` has run (pins the Rust toolchain, FFmpeg, and secrets tooling, and wires up [hk](https://hk.jdx.dev/) git hooks) and your keys are in fnox:
 
 ```sh
-fnox exec -- cargo run -- --from "45.517146,-73.579837" --to "43.676533,-79.357132" --output my_route
+fnox exec -- cargo run --release -- --from "45.517146,-73.579837" --to "43.676533,-79.357132" --output my_route
 ```
 
-(Omit `fnox exec --` if you've enabled `fnox activate` shell integration — the keys are already in your environment then.)
-
-`--from`/`--to` accept either `"lat,lon"` or a free-text place name. Run `cargo run -- --help` for the full flag reference (tuning flags like `--picsize`/`--fov`/`--fps`, and pipeline flags like `--dry-run`, `--fresh`, `--concurrency`, `--output-dir`). Note: pass negative numeric values with `=`, e.g. `--pitch=-30`, not `--pitch -30` — otherwise it's read as an unrecognized flag.
-
-Downloaded images, itinerary state, and the rendered video all land under `--output-dir` (default `./output/<name>/`). Re-running the same `--output` name resumes from where it left off unless the route/tuning changed, in which case pass `--fresh` to start over.
+Every run prints the resolved route, image count, and an estimated cost, then waits for confirmation (or exits under `--dry-run`) before downloading anything.
 
 ### Development
 

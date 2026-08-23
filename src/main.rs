@@ -99,6 +99,18 @@ fn output_paths(dir: &std::path::Path, name: &str) -> OutputPaths {
     }
 }
 
+/// Street View Static API pricing per Google's published rate card
+/// (developers.google.com/maps/billing-and-pricing/pricing, last checked
+/// 2026-08-23): $7.00 per 1,000 images, with the first 10,000/month free.
+/// This estimate assumes no free-tier allowance remains this month, since
+/// the CLI has no way to know how much of it you've already used — the
+/// actual charge may be $0 if you're within that allowance.
+const STREETVIEW_PRICE_PER_1000_USD: f64 = 7.00;
+
+fn estimate_download_cost_usd(image_count: usize) -> f64 {
+    image_count as f64 / 1000.0 * STREETVIEW_PRICE_PER_1000_USD
+}
+
 fn validate_api_keys(streetview: Option<&str>, directions: Option<&str>) -> Result<(), String> {
     let missing: Vec<&str> = [
         ("STREETVIEW_API_KEY", streetview),
@@ -266,6 +278,10 @@ async fn run() -> Result<(), String> {
 
     println!("Route: {start_display} -> {end_display}");
     println!("Images to download: {}", processed.len());
+    println!(
+        "Estimated cost: up to ${:.2} (Street View Static API, ${STREETVIEW_PRICE_PER_1000_USD:.2}/1000 images — Google's first 10,000 images/month are free, so this may cost $0 if you're within that allowance this month; the CLI can't check your remaining quota). Metadata probing above was free.",
+        estimate_download_cost_usd(processed.len())
+    );
 
     if args.dry_run {
         println!(
@@ -434,5 +450,23 @@ mod tests {
         assert_eq!(paths.itinerary_path, dir.join("itinerary.json"));
         assert_eq!(paths.lineup_dir, dir.join("lineup"));
         assert_eq!(paths.video_path, dir.join("joshua_tree.mp4"));
+    }
+
+    #[test]
+    fn estimate_download_cost_usd_scales_with_image_count() {
+        assert_eq!(super::estimate_download_cost_usd(0), 0.0);
+        assert_eq!(super::estimate_download_cost_usd(1000), 7.0);
+        assert_eq!(super::estimate_download_cost_usd(500), 3.5);
+    }
+
+    #[test]
+    fn estimate_download_cost_usd_matches_a_realistic_route_size() {
+        // A ~90km route (like the Marseille-airport-to-Simiane-la-Rotonde
+        // example) produced ~8500 images in practice.
+        let cost = super::estimate_download_cost_usd(8500);
+        assert!(
+            (cost - 59.5).abs() < 1e-9,
+            "expected ~$59.50 for 8500 images, got ${cost}"
+        );
     }
 }
