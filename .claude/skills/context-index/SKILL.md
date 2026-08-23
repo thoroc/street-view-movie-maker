@@ -32,6 +32,10 @@ scripts/check-context-frontmatter.sh .context/**/*.md
 2. Reads YAML frontmatter (`title`, `type`, `status`, `date`, `related`) from each
 3. Writes `.context/index.yaml` — one entry per file, sorted by path
 4. Prints any files missing required frontmatter to stderr (excluded from the index)
+5. Prints a `NOTICE` (advisory, non-blocking) for any `finding` still `status: active` whose
+   `related` plan is already `status: done` — a mechanical signal that the finding's
+   recommendation may have already shipped. See `ways-of-working.md`'s "Keeping plans and
+   findings in sync" for what to do with the notice.
 
 The generated `index.yaml` looks like:
 

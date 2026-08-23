@@ -2,7 +2,7 @@
 // Scans .context/**/*.md, parses frontmatter, and regenerates index.yaml.
 // Usage: regenerate-context-index.ts <root> <indexPath> <checkMode: "true"|"false">
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { relative } from 'node:path'
+import { dirname, relative, resolve } from 'node:path'
 
 type Entry = {
   title: string
@@ -90,11 +90,54 @@ const extractRelated = (raw: string): string[] => {
     .map((line) => line.trim().slice(2))
 }
 
-const main = (): void => {
-  const [root, indexPath, checkModeArg] = process.argv.slice(2)
-  const checkMode = checkModeArg === 'true'
-  const contextDir = `${root}/.context`
+// Findings are investigative input, not a standing task list: once the plan built from a
+// finding's recommendation ships, the finding should move to done/superseded too. This can't
+// detect that automatically, but a finding still `active` while its own related plan is
+// already `done` is a mechanical enough signal to be worth a nudge every time the index runs.
+const findStaleFindings = (
+  root: string,
+  entries: Entry[],
+): Array<{ path: string; title: string; relatedPath: string }> => {
+  const byPath = new Map(entries.map((e) => [e.path, e]))
+  const stale: Array<{ path: string; title: string; relatedPath: string }> = []
+  for (const e of entries) {
+    if (e.type !== 'finding' || e.status !== 'active' || !e.related) continue
+    for (const r of e.related) {
+      const fileDir = dirname(resolve(root, e.path))
+      const relatedPath = relative(root, resolve(fileDir, r))
+      const target = byPath.get(relatedPath)
+      if (target && target.status === 'done') {
+        stale.push({ path: e.path, title: e.title, relatedPath })
+        break
+      }
+    }
+  }
+  return stale
+}
 
+const reportStaleFindings = (
+  stale: Array<{ path: string; title: string; relatedPath: string }>,
+): void => {
+  if (stale.length === 0) return
+  console.error(
+    'NOTICE: active finding(s) whose related plan is already done (advisory, verify and update status):',
+  )
+  for (const f of stale) {
+    console.error(`  ${f.path} — related plan ${f.relatedPath} is done: "${f.title}"`)
+  }
+  console.error()
+  console.error(
+    "If the finding's recommendation has been fully acted on, flip status to done/superseded and",
+  )
+  console.error(
+    "add an Outcome section. See ways-of-working.md, 'Keeping plans and findings in sync'.",
+  )
+}
+
+const scanContextFiles = (
+  root: string,
+  contextDir: string,
+): { missing: string[]; entries: Entry[] } => {
   const glob = new Bun.Glob('**/*.md')
   const missing: string[] = []
   const entries: Entry[] = []
@@ -129,13 +172,10 @@ const main = (): void => {
     entries.push(entry)
   }
 
-  if (missing.length > 0) {
-    console.error(
-      'WARNING: files with missing frontmatter (excluded from index):',
-    )
-    for (const f of missing) console.error(`  ${f}`)
-  }
+  return { missing, entries }
+}
 
+const buildIndexLines = (entries: Entry[]): string[] => {
   const grouped: Record<string, Entry[]> = {}
   for (const e of entries) {
     const key = TYPE_GROUP_KEY[e.type] ?? 'other'
@@ -176,8 +216,26 @@ const main = (): void => {
     }
     lines.push('')
   }
+  return lines
+}
 
-  const output = `${lines.join('\n')}\n`
+const main = (): void => {
+  const [root, indexPath, checkModeArg] = process.argv.slice(2)
+  const checkMode = checkModeArg === 'true'
+  const contextDir = `${root}/.context`
+
+  const { missing, entries } = scanContextFiles(root, contextDir)
+
+  if (missing.length > 0) {
+    console.error(
+      'WARNING: files with missing frontmatter (excluded from index):',
+    )
+    for (const f of missing) console.error(`  ${f}`)
+  }
+
+  reportStaleFindings(findStaleFindings(root, entries))
+
+  const output = `${buildIndexLines(entries).join('\n')}\n`
   if (checkMode) {
     const current = existsSync(indexPath) ? readFileSync(indexPath, 'utf8') : ''
     if (output !== current) {
