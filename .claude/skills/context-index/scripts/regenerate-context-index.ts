@@ -90,40 +90,40 @@ const extractRelated = (raw: string): string[] => {
     .map((line) => line.trim().slice(2))
 }
 
-// Findings are investigative input, not a standing task list: once the plan built from a
-// finding's recommendation ships, the finding should move to done/superseded too. This can't
-// detect that automatically, but a finding still `active` while its own related plan is
-// already `done` is a mechanical enough signal to be worth a nudge every time the index runs.
+// Findings are investigative input, not a standing task list: once the finding's recommendation
+// is *fully* actioned, it should move to done/superseded too. This can't detect "fully actioned"
+// on its own, but a finding whose every related plan is already `done` is a mechanical enough
+// signal to be worth a nudge — a finding is not fully actioned while even one related plan is
+// still open, so this only fires when ALL of them are done, not just one.
 const findStaleFindings = (
   root: string,
   entries: Entry[],
-): Array<{ path: string; title: string; relatedPath: string }> => {
+): Array<{ path: string; title: string; relatedPaths: string[] }> => {
   const byPath = new Map(entries.map((e) => [e.path, e]))
-  const stale: Array<{ path: string; title: string; relatedPath: string }> = []
+  const stale: Array<{ path: string; title: string; relatedPaths: string[] }> = []
   for (const e of entries) {
-    if (e.type !== 'finding' || e.status !== 'active' || !e.related) continue
-    for (const r of e.related) {
-      const fileDir = dirname(resolve(root, e.path))
-      const relatedPath = relative(root, resolve(fileDir, r))
-      const target = byPath.get(relatedPath)
-      if (target && target.status === 'done') {
-        stale.push({ path: e.path, title: e.title, relatedPath })
-        break
-      }
+    if (e.type !== 'finding' || e.status !== 'active' || !e.related?.length) continue
+    const fileDir = dirname(resolve(root, e.path))
+    const related = e.related
+      .map((r) => relative(root, resolve(fileDir, r)))
+      .map((relatedPath) => byPath.get(relatedPath))
+      .filter((target): target is Entry => target !== undefined)
+    if (related.length === e.related.length && related.every((t) => t.status === 'done')) {
+      stale.push({ path: e.path, title: e.title, relatedPaths: related.map((t) => t.path) })
     }
   }
   return stale
 }
 
 const reportStaleFindings = (
-  stale: Array<{ path: string; title: string; relatedPath: string }>,
+  stale: Array<{ path: string; title: string; relatedPaths: string[] }>,
 ): void => {
   if (stale.length === 0) return
   console.error(
-    'NOTICE: active finding(s) whose related plan is already done (advisory, verify and update status):',
+    'NOTICE: active finding(s) whose related plan(s) are all already done (advisory, verify and update status):',
   )
   for (const f of stale) {
-    console.error(`  ${f.path} — related plan ${f.relatedPath} is done: "${f.title}"`)
+    console.error(`  ${f.path} — ${f.relatedPaths.join(', ')} done: "${f.title}"`)
   }
   console.error()
   console.error(

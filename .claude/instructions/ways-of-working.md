@@ -86,10 +86,11 @@ This repo has a remote (`origin` = `thoroc/street-view-movie-maker` on GitHub) �
 
 When you implement what a plan describes, update its frontmatter `status: active → done` in the same PR. The `context-index` hk step will regenerate `.context/index.yaml` on the next commit.
 
-The same rule applies to any `FINDING` that fed the work: once the plan or fix built from a finding's recommendation has shipped, flip that finding's `status` to `done` too (or `superseded` if a
-later finding replaced its conclusions), in the same PR. Add a short `## Outcome` section noting what shipped and where (a commit, a PR, or files created as a result — e.g. the ADRs a
-`adr-capture` recommendation produced). A finding is investigative input, not a standing task list; leaving it `active` after its recommendation is fully acted on is just as misleading as a stale
-plan, and nothing else in this workflow catches that mismatch either.
+The same rule applies to any `FINDING` that fed the work, with one condition: only flip a finding's `status` to `done` (or `superseded` if a later finding replaced its conclusions) once its
+recommendation is **entirely** actioned — every related plan shipped, every gap it called out closed. A finding with three related plans and only one shipped stays `active`; do not mark it done on
+partial progress, and do not mark it done because *a* plan referencing it shipped if the finding's own scope was broader than that one plan. When it is fully actioned, flip the status in the same
+PR and add a short `## Outcome` section naming what shipped and where (a commit, a PR, or files created as a result — e.g. the ADRs an `adr-capture` recommendation produced). A finding is
+investigative input, not a standing task list; leaving it `active` after it's fully acted on is just as misleading as a stale plan, and nothing else in this workflow catches that mismatch either.
 
 This also applies when the connection isn't obvious. Before committing a change, check `.context/index.yaml` for active plans, findings, or follow-ups that overlap the files or problem you just
 touched, even if you weren't working "from" that plan/finding or arrived at the fix by a different route. If your change satisfies part or all of an active plan's scope, update that plan in the
