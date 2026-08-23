@@ -22,14 +22,15 @@
         "audit",
         "follow-up",
         "learning",
-        "handover"
+        "handover",
+        "known-issue"
       ],
-      "description": "File category — matches the subdirectory (plans/ → plan, findings/ → finding, analysis/ → analysis, follow-ups/ → follow-up)."
+      "description": "File category — matches the subdirectory (plans/ → plan, findings/ → finding, analysis/ → analysis, follow-ups/ → follow-up). known-issue is produced by design-debate when a debate returns do-not-proceed."
     },
     "status": {
       "type": "string",
-      "enum": ["draft", "active", "done", "superseded"],
-      "description": "Lifecycle status. Use draft until reviewed, active for in-progress, done when complete, superseded when replaced."
+      "enum": ["draft", "ready", "active", "done", "superseded", "deferred"],
+      "description": "Lifecycle status. For type: plan — draft until reviewed, ready once approved and queued, active once a worktree/branch referencing the plan exists (implementation actually underway), done when complete, superseded when replaced. For type: finding/follow-up — active means still outstanding/unresolved (no ready/active split for these two types), done when actioned, superseded when replaced. deferred applies per value-rubric.md's read protocol (paired with a deferred_until field) and is not currently emitted by any skill's default workflow."
     },
     "date": {
       "type": "string",

@@ -39,7 +39,7 @@ Every `.context/` file MUST start with this exact block:
 ---
 title: "Human-readable title"
 type: plan | finding | analysis | follow-up | learning | handover
-status: draft | active | done | superseded
+status: draft | active | done | superseded  # plan also accepts: ready
 date: YYYY-MM-DD
 related:
   - relative/path/to/related.md
@@ -50,8 +50,12 @@ Field rules:
 
 - `title` — prose title matching the H1 heading; wrap in quotes
 - `type` — matches the subdirectory (`plans/` → `plan`, `findings/` → `finding`, `analysis/` → `analysis`, `follow-ups/` → `follow-up`, `learnings/` → `learning`, `handover/` → `handover`)
-- `status` — `draft` until reviewed, `active` for in-progress work, `done` when complete, `superseded` when replaced. For `follow-up`, `active` means still outstanding and `done` means actioned — flip
-  it to `done` in the same change that resolves it, never delete the file
+- `status` — `draft` until reviewed, `done` when complete, `superseded` when replaced. For `plan`:
+  `active` means implementation is actually underway (an open worktree/branch references it) —
+  `ready` sits between `draft` and `active`, meaning reviewed/approved/queued but not yet started;
+  see `.claude/instructions/planning-flow.md`. For every other type, `active` keeps its plain
+  meaning of "still outstanding" (e.g. for `follow-up`, still outstanding, with `done` meaning
+  actioned — flip it to `done` in the same change that resolves it, never delete the file)
 - `date` — creation date in ISO format; do not update on edits
 - `related` — relative paths from the file's location; omit the key entirely if there are no related files
 
@@ -60,7 +64,7 @@ Field rules:
 1. Determine type: plan / finding / analysis / follow-up / learning / handover
 2. Choose a filename: every `.context/` type is date-first, `YYYY-MM-DD-<slug>.md` (e.g. `2026-06-30-migrate-off-tessl-eval.md`) — same convention as journal entries
 3. Create the file using the template matching the type below
-4. Set `status: draft` until the content is reviewed (follow-ups start at `active` — they are already actionable, not draft)
+4. Set `status: draft` until the content is reviewed (follow-ups start at `active` — they are already actionable, not draft). For a plan, promotion after review goes to `ready`, not `active` — see the Mindset section.
 5. Run the context index regeneration script to update the index after creation
 
 ## Templates
@@ -211,7 +215,8 @@ Set `status: done` once the next session closes the handover.
 ## Mindset
 
 - Write for the next agent or human who reads this cold — assume no prior context
-- `status: draft` is the safe default; promote to `active` only when reviewed
+- `status: draft` is the safe default; promote only when reviewed — to `ready` for a `plan`, to
+  `active` for every other type
 - Date is creation date, not last-modified — do not update it on subsequent edits
 - After creating or updating a `.context/` file, consider regenerating the index to keep it current
 - Use production-grade terminology: pitfall, gotcha, ALWAYS, NEVER, anti-pattern

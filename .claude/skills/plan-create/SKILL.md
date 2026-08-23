@@ -130,7 +130,8 @@ Created: .context/plans/<file>.md
 Title:   <title>
 Status:  draft
 Phases:  <N> phases, <M> tasks total
-Next:    Run plan-review on it, or mark status: ACTIVE to start implementing
+Next:    Run plan-review on it, or mark status: READY once reviewed and approved
+         (status becomes ACTIVE on its own once a worktree/branch for it exists)
 ```
 
 ## Verification
@@ -173,9 +174,11 @@ After creating the plan, run these checks:
 - Tasks should be single-session-sized. TYPICALLY a phase holds 2-5 tasks. If a
   task takes "a few days", it's too large -- break it down. If it takes
   "5 minutes", it's too small -- combine it.
-- BY DEFAULT a new plan is `status: DRAFT`. Promote to `ACTIVE` only after the
-  plan is reviewed and approved -- AVOID skipping straight to `ACTIVE` UNLESS the
+- BY DEFAULT a new plan is `status: DRAFT`. Promote to `READY` only after the
+  plan is reviewed and approved -- AVOID skipping straight to `READY` UNLESS the
   work is genuinely trivial enough to skip review entirely (see When NOT to Use).
+  `ACTIVE` is not a manual promotion at all -- it's entered automatically once a
+  worktree/branch referencing the plan exists (see `planning-flow.md`).
 - The YAML frontmatter is not optional. A plan without frontmatter is invisible
   to `.context/index.yaml` and to every agent that reads it.
 - Sizing `effort` and grading `value` is RECOMMENDED to happen against the
@@ -242,7 +245,7 @@ number is worse than a missing one -- it looks authoritative but isn't.
 
 **WHY:** `effort` exists so plans are triageable at a glance, the same way
 `status` lets a reader triage by lifecycle stage. `validate-context-frontmatter.sh`
-requires it for any `type: PLAN` with `status: DRAFT` or `ACTIVE`.
+requires it for any `type: PLAN` with `status: DRAFT`, `READY`, or `ACTIVE`.
 
 **BAD:** Setting `effort: S` on a plan nobody has actually sized, just to pass
 validation.

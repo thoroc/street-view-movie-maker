@@ -63,7 +63,7 @@
     {
       "type": "guidance",
       "why_given": "preference",
-      "content": "Default a new plan to status: DRAFT; promote to ACTIVE only after review and approval."
+      "content": "Default a new plan to status: DRAFT; promote to READY only after review and approval (ACTIVE is entered automatically once a worktree/branch for the plan exists)."
     },
     {
       "type": "guidance",

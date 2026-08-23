@@ -87,7 +87,7 @@ Every `.context/*.md` file requires this frontmatter block (template at `assets/
 ---
 title: "Human-readable title"
 type: plan | finding | analysis | follow-up | learning | handover
-status: draft | active | done | superseded
+status: draft | active | done | superseded  # plan also accepts: ready
 date: YYYY-MM-DD
 related:
   - ../plans/related-plan.md # omit entirely if no related files
