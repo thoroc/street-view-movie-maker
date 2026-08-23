@@ -18,6 +18,9 @@ local pre_push_steps = new Mapping<String, Step> {
         glob = "**/*.rs"
         check = "cargo test"
     }
+    ["ctxharness"] {
+        check = "ctxharness run --no-trend"
+    }
 }
 
 // .context/ is untracked working state (see ways-of-working.md), so it never shows up as a
