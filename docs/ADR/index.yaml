@@ -41,3 +41,44 @@ entries:
     date: 2026-08-23
     context:
       - path: ".context/findings/2026-08-23-adr-candidates-from-python-to-rust-port-git-history.md"
+  - path: "ADR/adr-006-context-lifecycle-ready-status.md"
+    adr: "ADR-006"
+    title: "ADR-006: Split active into ready and active in the .context lifecycle"
+    status: proposed
+    date: 2026-08-23
+    context:
+      - path: ".context/findings/2026-08-23-plan-status-vocabulary-conflates-ready-and-active.md"
+      - path: ".context/plans/2026-08-23-add-ready-status-to-context-lifecycle.md"
+      - path: ".context/findings/2026-08-23-undocumented-decisions-check-has-false-negative-on-index-yaml-mention.md"
+      - path: ".context/follow-ups/2026-08-23-undocumented-decisions-check-not-wired-into-hk-pkl.md"
+      - path: ".context/follow-ups/2026-08-23-context-frontmatter-enum-values-out-of-sync-with-docs.md"
+  - path: "ADR/adr-007-plumber-allowlist-entry-required-with-new-actions.md"
+    adr: "ADR-007"
+    title: "ADR-007: Every new third-party GitHub Action requires a matching Plumber allowlist entry in the same commit"
+    status: accepted
+    date: 2026-08-23
+    context:
+      - path: ".context/findings/2026-08-23-ci-cargo-mise-caching-gap-and-plumber-action-allowlist.md"
+  - path: "ADR/adr-008-inset-map-feature-design.md"
+    adr: "ADR-008"
+    title: "ADR-008: Inset map overlay — local compositing, single Static Maps fetch, on-by-default"
+    status: proposed
+    date: 2026-08-23
+    context:
+      - path: ".context/findings/2026-08-23-inset-map-with-route-in-the-video-corner-feasibility.md"
+      - path: ".context/plans/2026-08-23-add-inset-map-with-route-to-the-output-video-corner.md"
+  - path: "ADR/adr-009-ci-workflows-adapted-to-rust-mise-hk.md"
+    adr: "ADR-009"
+    title: "ADR-009: Adapt copied CI workflows to this repo's Rust/mise/hk stack"
+    status: accepted
+    date: 2026-08-23
+    context:
+      - path: ".context/plans/2026-08-23-adapt-copied-github-workflows-to-rust-cli.md"
+  - path: "ADR/adr-010-turn-ahead-road-sign-overlay-design.md"
+    adr: "ADR-010"
+    title: "ADR-010: Turn-ahead road-sign overlay — maneuver-driven, render-time windowing"
+    status: proposed
+    date: 2026-08-23
+    context:
+      - path: ".context/findings/2026-08-23-turn-ahead-road-sign-overlay-feasibility.md"
+      - path: ".context/plans/2026-08-23-add-turn-ahead-road-sign-overlay.md"
