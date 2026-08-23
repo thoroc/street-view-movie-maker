@@ -82,14 +82,19 @@ This repo has a remote (`origin` = `thoroc/street-view-movie-maker` on GitHub) �
 - Set the merge to squash when opening or merging the PR (`gh pr merge --squash`, or "Squash and merge" in the GitHub UI).
 - The squashed commit message should be a conventional message summarising the whole change.
 
-## Keeping plans in sync with implementation
+## Keeping plans and findings in sync with implementation
 
-When you implement what a plan describes, update its frontmatter `status: active → done` in the same PR. The `context-index` hook will regenerate `.context/index.yaml` automatically.
+When you implement what a plan describes, update its frontmatter `status: active → done` in the same PR. The `context-index` hk step will regenerate `.context/index.yaml` on the next commit.
 
-This also applies when the connection isn't obvious. Before committing a change, check `.context/index.yaml` for active plans or follow-ups that overlap the files or problem you just touched, even if
-you weren't working "from" that plan and arrived at the fix by a different route. If your change satisfies part or all of an active plan's scope, update that plan in the same commit: mark the relevant
-part done, correct any design description that no longer matches what actually shipped, and note the commit that did it. Do not leave a plan describing work as still-to-do once the work is done, no
-matter how it got done — a plan can be independently solved by an unrelated commit that never references it, and nothing else in this workflow catches that mismatch.
+The same rule applies to any `FINDING` that fed the work: once the plan or fix built from a finding's recommendation has shipped, flip that finding's `status` to `done` too (or `superseded` if a
+later finding replaced its conclusions), in the same PR. Add a short `## Outcome` section noting what shipped and where (a commit, a PR, or files created as a result — e.g. the ADRs a
+`adr-capture` recommendation produced). A finding is investigative input, not a standing task list; leaving it `active` after its recommendation is fully acted on is just as misleading as a stale
+plan, and nothing else in this workflow catches that mismatch either.
+
+This also applies when the connection isn't obvious. Before committing a change, check `.context/index.yaml` for active plans, findings, or follow-ups that overlap the files or problem you just
+touched, even if you weren't working "from" that plan/finding or arrived at the fix by a different route. If your change satisfies part or all of an active plan's scope, update that plan in the
+same commit: mark the relevant part done, correct any design description that no longer matches what actually shipped, and note the commit that did it. Do not leave a plan or finding describing
+work as still-to-do once the work is done, no matter how it got done — either can be independently resolved by an unrelated commit that never references it.
 
 ## After merge
 
