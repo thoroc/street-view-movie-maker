@@ -53,10 +53,10 @@
               "items": {
                 "type": "string",
                 "enum": [
-                  "COLLECTION",
-                  "DIGEST",
-                  "DELIVERY",
-                  "INFRA",
+                  "ROUTING",
+                  "STREETVIEW",
+                  "VIDEO",
+                  "CLI",
                   "GOVERNANCE",
                   "TOOLING"
                 ]

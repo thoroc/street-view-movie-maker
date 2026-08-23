@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/thoroc/thoroc.github.io/refs/heads/main/main/.claude/skills/risk-register/assets/schemas/risk-register-row.schema.json",
+  "$id": "https://raw.githubusercontent.com/thoroc/street-view-movie-maker/refs/heads/main/.claude/skills/risk-register/assets/schemas/risk-register-row.schema.json",
   "title": "Risk Register Row",
   "description": "Shape of a single row in docs/RISK_REGISTER.md. Enforced by scripts/validate-risk-register-schema.sh; illustrated by assets/templates/risk-register-row-template.yaml.",
   "type": "object",

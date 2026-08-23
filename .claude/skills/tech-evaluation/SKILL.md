@@ -40,9 +40,9 @@ way. One recommendation, not a comparison table with no conclusion: the point of
 
 ## When to Use
 
-- Choosing between candidate libraries/dependencies for a specific integration point (as in the Bedrock
-  prompt-templating decision this skill was inferred from: mustache vs. micromustache vs. eta vs. pug vs.
-  `.prompty` vs. POML vs. a hand-rolled function).
+- Choosing between candidate crates/dependencies for a specific integration point (as in this repo's CLI-parser
+  decision: `usage`/`usage-rs` vs. `clap`, recorded in
+  `.context/plans/2026-08-22-port-street-view-movie-maker-to-rust-cli.md`).
 - A plan or ADR decision hinges on a factual claim about a library that keeps getting revisited because nobody
   wrote the answer down with evidence.
 - The user explicitly asks to "investigate," "research," or "properly evaluate" a technology option mid-decision.
@@ -70,8 +70,9 @@ way. One recommendation, not a comparison table with no conclusion: the point of
    - The question set from step 1, verbatim.
    - An instruction to cite evidence for every verdict -- a file path with line number, a URL, or a specific doc
      section, never "the docs" or "general knowledge." AVOID trusting a claim about this repository's own
-     constraints (bundling, an existing convention, a call site) without reading the actual source first -- this
-     has been a real production gotcha before (an assumption about Lambda bundling was wrong).
+     constraints (this crate's `Cargo.toml` pin, the `mise.toml` toolchain, an existing call site) without reading
+     the actual source first -- a generic claim about "how a crate usually behaves" is not evidence about this
+     project's actual dependency graph or toolchain.
    - The scaffold at `assets/templates/tech-evaluation-scaffold.yaml`, and an instruction to write its output as
      YAML matching that shape to a path you specify.
    - An explicit instruction that the final recommendation MUST be exactly one of `adopt` / `keep_current` /
@@ -110,15 +111,15 @@ rationale: "seems fine"
 
 # GOOD
 rationale: >
-  X does not escape by default (confirmed from source), but its dependency tree pulls in a
-  native binary incompatible with this project's single-file Lambda bundle.
+  X does not pull in a runtime dependency on libclang (confirmed from its Cargo.toml), unlike the
+  alternative, which would break the project's cross-compilation targets in mise.toml.
 ```
 
 **NEVER** let a subagent answer from memory when the claim concerns this repository.
-**WHY:** A generic claim about "how bundling usually works" is not evidence about this project's actual
-`archive_file` Terraform resource or `bun build` config -- it has been wrong before, in production.
-**BAD:** Trusting "Lambda zips usually support node_modules" without checking.
-**GOOD:** Instructing the subagent to read the actual Terraform/build config and cite the file/line.
+**WHY:** A generic claim about "how crate X usually behaves" is not evidence about this project's actual
+`Cargo.toml` dependency graph or `mise.toml` toolchain -- verify against the real files, not training data.
+**BAD:** Trusting "crate X is pure Rust, no native deps" without checking.
+**GOOD:** Instructing the subagent to read the actual `Cargo.toml`/`Cargo.lock` and cite the file/line.
 
 **NEVER** skip the schema validation step because the YAML "looks right."
 **WHY:** The validator catches exactly the failure modes a rushed read misses.

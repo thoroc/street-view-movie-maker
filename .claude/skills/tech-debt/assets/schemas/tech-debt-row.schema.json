@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/thoroc/thoroc.github.io/refs/heads/main/main/.claude/skills/tech-debt/assets/schemas/tech-debt-row.schema.json",
+  "$id": "https://raw.githubusercontent.com/thoroc/street-view-movie-maker/refs/heads/main/.claude/skills/tech-debt/assets/schemas/tech-debt-row.schema.json",
   "title": "Tech Debt Row",
   "description": "Shape of a single row in docs/TECH_DEBT.md. Enforced by scripts/validate-tech-debt-schema.sh; illustrated by assets/templates/tech-debt-row-template.yaml. Unlike risk-register-row.schema.json, this schema has no append-only companion script -- rows are deleted, not archived, once resolved (see SKILL.md Rules).",
   "type": "object",
