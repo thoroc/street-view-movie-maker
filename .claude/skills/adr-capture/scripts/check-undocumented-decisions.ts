@@ -54,8 +54,9 @@ const main = (): void => {
     const fullPath = `${contextDir}/${relToContext}`
     if (referenced.has(resolve(fullPath))) continue
 
+    if (relToContext === 'index.yaml') continue
+
     const content = readFileSync(fullPath, 'utf8')
-    if (content.includes('index.yaml')) continue
 
     const matchedKeyword = DECISION_KEYWORDS.find((kw) => kw.test(content))
     if (matchedKeyword) {

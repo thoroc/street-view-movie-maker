@@ -64,7 +64,9 @@ The primary is the area the item most changes, not merely one it touches.
 
 `themes[0]` is the final tie-breaker in the "what's next" sort, below `value` then `effort`:
 
-1. Filter to `DRAFT`/`ACTIVE` `PLAN`/`FINDING`/`KNOWN_ISSUE`.
+1. Filter to `DRAFT`/`READY`/`ACTIVE`/`DEFERRED` `PLAN`/`FINDING`/`KNOWN_ISSUE`, tiered
+   `ACTIVE > READY > DRAFT > DEFERRED` (`READY` only applies to `PLAN` entries — see
+   `value-rubric.md`'s Read protocol for the full tiering and `deferred_until` rules).
 2. Sort by `value` descending (`HIGH` > `MEDIUM` > `LOW`).
 3. Then `effort` ascending (`S` < `M` < `L` < `TBD`) where present.
 4. Then, only to break a remaining tie, prefer the item whose `themes[0]` matches the area already in focus. Theme

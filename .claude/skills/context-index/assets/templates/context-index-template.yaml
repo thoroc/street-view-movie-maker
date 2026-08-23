@@ -4,8 +4,8 @@
 # Copy the block below into any new .context/**/*.md file.
 # Remove the "related" field if there are no related files — do not leave it empty.
 #
-# type values   : plan | finding | analysis
-# status values : draft | active | done | superseded
+# type values   : plan | finding | analysis | instruction | audit | follow-up | learning | handover | known-issue
+# status values : draft | active | done | superseded | deferred  (plan also accepts: ready)
 # date format   : YYYY-MM-DD (creation date; do not update on edits)
 
 ---

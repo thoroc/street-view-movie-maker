@@ -44,7 +44,13 @@ Each step maps to an existing skill -- use it rather than re-inventing the step.
 
 - **NEVER** begin implementing before findings **and** a reviewed draft plan exist. If asked to build something, produce
   the documents first and stop at the review-and-decision gate.
-- The plan stays `status: DRAFT` until the user approves it; promote to `ACTIVE` on approval.
+- The plan stays `status: DRAFT` until the user approves it; promote to `READY` on approval.
+  `READY` means reviewed, approved, and queued — not yet started. A plan becomes `ACTIVE` when a
+  worktree/branch referencing it actually exists (created via `EnterWorktree`, per the Branch
+  workflow in `ways-of-working.md`), and reverts to `READY` (if that worktree/branch is abandoned)
+  or advances to `DONE` (on merge). This makes the `READY`→`ACTIVE` transition observable against
+  repo state rather than resting on memory or self-declaration — see
+  `docs/ADR/adr-006-context-lifecycle-ready-status.md`.
 - Subagent reviews are strictly read-only (no edits) and should use diverse, adversarial lenses -- redundant reviewers
   add little.
 - The main agent must add value at the synthesis step: reconcile and decide, do not just forward subagent output.

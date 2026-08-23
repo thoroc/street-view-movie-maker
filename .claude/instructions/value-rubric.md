@@ -46,17 +46,22 @@ capability. Correct to do eventually, not urgent to do next.
 `value` is an **authoritative sort key**, not an advisory label. To answer "which item is highest value to do next?",
 read `.context/index.yaml` and:
 
-1. Filter to `status` in {`DRAFT`, `ACTIVE`, `DEFERRED`} of type `PLAN`, `FINDING`, or `KNOWN_ISSUE`.
-   (`DONE`/`SUPERSEDED` grades exist as a learning corpus and never enter this sort.)
+1. Filter to `status` in {`DRAFT`, `READY`, `ACTIVE`, `DEFERRED`} of type `PLAN`, `FINDING`, or
+   `KNOWN_ISSUE`. (`DONE`/`SUPERSEDED` grades exist as a learning corpus and never enter this sort.
+   `READY` only ever appears on `PLAN` entries — `FINDING`/`KNOWN_ISSUE` don't use the ready/active
+   split; see `planning-flow.md`.)
 2. **Drop any `DEFERRED` item whose `deferred_until` is a future date** (strictly after today): it is not listed at all
    until that date arrives. `deferred_until` governs visibility even when the item is also externally blocked — the date
    takes precedence over the "blocked but visible" default (an item can be both; the date wins). Items with no
    `deferred_until`, or whose `deferred_until` has passed, remain candidates.
-3. Split the survivors into two tiers and always exhaust tier 1 before tier 2: **tier 1** = `DRAFT`/`ACTIVE` (work you
-   would pick up next); **tier 2** = `DEFERRED` (real but not actionable yet — date-gated or externally blocked; _not_
-   merely low-priority, which is `value: LOW` on an `ACTIVE` item). A `DEFERRED` item never outranks a `DRAFT`/`ACTIVE`
-   one, regardless of its `value`. A `DEFERRED` item whose `deferred_until` has passed (so it survived step 2) is
-   reactivation-eligible — surface it for promotion to `ACTIVE` rather than leaving it parked.
+3. Split the survivors into four tiers and always exhaust an earlier tier before the next:
+   **tier 1** = `ACTIVE` (implementation actually underway — the most immediately useful to look
+   at); **tier 2** = `READY` (approved and queued, not yet started); **tier 3** = `DRAFT` (not yet
+   reviewed); **tier 4** = `DEFERRED` (real but not actionable yet — date-gated or externally
+   blocked; _not_ merely low-priority, which is `value: LOW` on an `ACTIVE`/`READY` item). A
+   `DEFERRED` item never outranks an `ACTIVE`/`READY`/`DRAFT` one, regardless of its `value`. A
+   `DEFERRED` item whose `deferred_until` has passed (so it survived step 2) is
+   reactivation-eligible — surface it for promotion to `READY` rather than leaving it parked.
 4. Within each tier, sort by `value` descending (`HIGH` > `MEDIUM` > `LOW`).
 5. Break ties by `effort` ascending (`S` < `M` < `L` < `TBD`) where present. Findings and known-issues have no `effort`,
    so within a bucket they sort by `value` alone.
@@ -65,8 +70,8 @@ read `.context/index.yaml` and:
    [`theme-vocabulary.md`](theme-vocabulary.md).
 7. Act on the top item **without re-forming an independent judgement**. Relocating the judgement to read-time would
    reopen the gap this field closes. Before picking a `DEFERRED` item, confirm its blocker has cleared and reactivate it
-   to `ACTIVE`; if the whole tier-1 set is empty and every `DEFERRED` item is still blocked, there is genuinely nothing
-   to pick up.
+   to `READY`; if the whole `ACTIVE`/`READY`/`DRAFT` set is empty and every `DEFERRED` item is still blocked, there is
+   genuinely nothing to pick up.
 
 This protocol only holds if the grades are trustworthy. That is why grading against this rubric (not ad hoc), the
 calibration pass on backfill, and re-grading on status transitions are load-bearing, not optional.

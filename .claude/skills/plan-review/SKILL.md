@@ -39,7 +39,7 @@ set of assumptions and focus areas.
 ## When to Use
 
 - A `.context/plans/*.md` file needs an independent multi-perspective review before implementation
-- A draft plan needs validation before marking it `ACTIVE`
+- A draft plan needs validation before marking it `READY`
 - Multiple plans exist in the same domain and need prioritisation
 - A stale plan needs a freshness check against current project state
 - The user explicitly asks for a plan audit
@@ -112,8 +112,10 @@ This checks:
 
 - Frontmatter exists and opens/closes with `---`
 - All required fields present (`title`, `type`, `status`, `date`)
-- `type` is one of the allowed values (`PLAN`, `FINDING`, `ANALYSIS`, `INSTRUCTION`, `AUDIT`)
-- `status` is one of `DRAFT`, `ACTIVE`, `DONE`, `SUPERSEDED`
+- `type` is one of the allowed values (`PLAN`, `FINDING`, `ANALYSIS`, `INSTRUCTION`, `AUDIT`,
+  `FOLLOW-UP`, `LEARNING`, `HANDOVER`, `KNOWN-ISSUE`)
+- `status` is one of `DRAFT`, `READY`, `ACTIVE`, `DONE`, `SUPERSEDED`, `DEFERRED` (`READY` applies
+  to `PLAN` only — see `.claude/instructions/planning-flow.md`)
 - `date` matches `YYYY-MM-DD` pattern
 - No extra fields beyond those defined in the schema
 

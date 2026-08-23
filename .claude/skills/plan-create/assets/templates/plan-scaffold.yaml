@@ -23,7 +23,7 @@ plan:
   frontmatter:
     title: "Plan: <Short Title>"
     type: PLAN
-    status: DRAFT
+    status: draft
     date: YYYY-MM-DD
     effort: "M"  # S | M | L | TBD — total effort, matches skill-auditor remediation convention
     value: "MEDIUM"  # HIGH | MEDIUM | LOW — benefit-of-action, graded against .claude/instructions/value-rubric.md
