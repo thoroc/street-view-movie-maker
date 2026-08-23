@@ -38,6 +38,13 @@ local pre_commit_steps = (linters) {
         // advisory nudge. Still skips cleanly when .context/ doesn't exist (fresh worktree).
         check = "! test -d .context || .claude/skills/context-index/scripts/check-context-filenames.sh"
     }
+    ["adr_undocumented_decisions"] {
+        // Blocking, same rationale as context_filenames: a .context/ decision with no ADR is
+        // invisible to the ADR index the adr-capture skill maintains. Previously only skill-invoked,
+        // never actually enforced here (see ADR-006's scope amendment) -- wiring it in now that the
+        // 5 pre-existing undocumented decisions it found have real ADRs (adr-007..adr-010).
+        check = "! test -d .context || .claude/skills/adr-capture/scripts/check-undocumented-decisions.sh"
+    }
 }
 
 hooks {
