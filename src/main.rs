@@ -1,7 +1,9 @@
+mod compositing;
 mod directions;
 mod geo;
 mod itinerary;
 mod lineup;
+mod maps;
 mod net;
 mod streetview;
 mod video;
@@ -87,6 +89,20 @@ struct Args {
     /// Avoid ferries when routing (matches Google Maps' "Avoid ferries" toggle)
     #[usage(long)]
     avoid_ferries: bool,
+
+    /// Hide the inset route map (shown in a frame corner by default)
+    #[usage(long)]
+    hide_map: bool,
+
+    /// Corner of the frame the inset route map is placed in
+    #[usage(long, choices("top-left", "top-right", "bottom-left", "bottom-right"))]
+    map_corner: Option<String>,
+
+    /// Fetched inset map's resolution, e.g. "200x200" (also used for the
+    /// marker's pixel math); the on-frame footprint is a separate,
+    /// percentage-based size, not controlled by this flag
+    #[usage(long)]
+    map_size: Option<String>,
 }
 
 /// Values used when a field is left unset outside of --interactive.
@@ -98,6 +114,9 @@ const DEFAULT_HOP_SIZE: u32 = 10;
 const DEFAULT_TURN_THRESHOLD: u32 = 5;
 const DEFAULT_FPS: u32 = 20;
 const DEFAULT_CONCURRENCY: usize = 5;
+const DEFAULT_MAP_CORNER: &str = "bottom-right";
+const DEFAULT_MAP_SIZE: &str = "200x200";
+const MAP_CORNER_CHOICES: [&str; 4] = ["top-left", "top-right", "bottom-left", "bottom-right"];
 
 /// Args with every field settled: either passed on the command line, filled in
 /// interactively, or defaulted. This is what the rest of `run()` operates on.
@@ -120,6 +139,9 @@ struct ResolvedArgs {
     avoid_tolls: bool,
     avoid_highways: bool,
     avoid_ferries: bool,
+    hide_map: bool,
+    map_corner: String,
+    map_size: String,
 }
 
 fn prompt_line(label: &str) -> Result<String, String> {
@@ -166,6 +188,23 @@ fn prompt_bool_with_default(label: &str, default: bool) -> Result<bool, String> 
             "n" | "no" => return Ok(false),
             _ => println!("  please answer y or n."),
         }
+    }
+}
+
+fn prompt_choice_with_default(
+    label: &str,
+    default: &str,
+    choices: &[&str],
+) -> Result<String, String> {
+    loop {
+        let raw = prompt_line(&format!("{label} [{default}] ({})", choices.join("/")))?;
+        if raw.is_empty() {
+            return Ok(default.to_string());
+        }
+        if choices.contains(&raw.as_str()) {
+            return Ok(raw);
+        }
+        println!("  please choose one of: {}", choices.join(", "));
     }
 }
 
@@ -216,6 +255,11 @@ fn resolve_args(raw: Args) -> Result<ResolvedArgs, String> {
             avoid_tolls: raw.avoid_tolls,
             avoid_highways: raw.avoid_highways,
             avoid_ferries: raw.avoid_ferries,
+            hide_map: raw.hide_map,
+            map_corner: raw
+                .map_corner
+                .unwrap_or_else(|| DEFAULT_MAP_CORNER.to_string()),
+            map_size: raw.map_size.unwrap_or_else(|| DEFAULT_MAP_SIZE.to_string()),
         });
     }
 
@@ -290,6 +334,26 @@ fn resolve_args(raw: Args) -> Result<ResolvedArgs, String> {
         } else {
             prompt_bool_with_default("Avoid ferries", false)?
         },
+        map_size: match raw.map_size {
+            Some(v) => v,
+            None => prompt_with_default(
+                "Fetched inset map resolution (e.g. 200x200)",
+                DEFAULT_MAP_SIZE,
+            )?,
+        },
+        map_corner: match raw.map_corner {
+            Some(v) => v,
+            None => prompt_choice_with_default(
+                "Inset map corner",
+                DEFAULT_MAP_CORNER,
+                &MAP_CORNER_CHOICES,
+            )?,
+        },
+        hide_map: if raw.hide_map {
+            true
+        } else {
+            prompt_bool_with_default("Hide inset map", false)?
+        },
         from,
         to,
         output,
@@ -311,6 +375,7 @@ struct OutputPaths {
     images_dir: std::path::PathBuf,
     itinerary_path: std::path::PathBuf,
     lineup_dir: std::path::PathBuf,
+    composited_dir: std::path::PathBuf,
     video_path: std::path::PathBuf,
 }
 
@@ -322,6 +387,7 @@ fn output_paths(dir: &std::path::Path, name: &str) -> OutputPaths {
         images_dir: dir.join("images"),
         itinerary_path: dir.join("itinerary.json"),
         lineup_dir: dir.join("lineup"),
+        composited_dir: dir.join("composited"),
         video_path: dir.join(format!("{name}.mp4")),
     }
 }
@@ -334,8 +400,23 @@ fn output_paths(dir: &std::path::Path, name: &str) -> OutputPaths {
 /// actual charge may be $0 if you're within that allowance.
 const STREETVIEW_PRICE_PER_1000_USD: f64 = 7.00;
 
+/// Maps Static API pricing per Google's published rate card (same source as
+/// the Street View constant above, last checked 2026-08-23): $2.00 per 1,000
+/// requests, with the first 10,000/month free. Only one Static Maps request
+/// happens per run regardless of frame count.
+const STATIC_MAP_PRICE_PER_1000_USD: f64 = 2.00;
+
 fn estimate_download_cost_usd(image_count: usize) -> f64 {
     image_count as f64 / 1000.0 * STREETVIEW_PRICE_PER_1000_USD
+}
+
+/// The one Static Maps image fetched per run, plus what's needed to place
+/// the per-frame marker on it (see `geo::lat_lon_to_pixel`).
+struct MapState {
+    path: std::path::PathBuf,
+    center: (f64, f64),
+    zoom: u32,
+    size: (u32, u32),
 }
 
 fn validate_api_keys(streetview: Option<&str>, directions: Option<&str>) -> Result<(), String> {
@@ -525,6 +606,12 @@ async fn run() -> Result<(), String> {
         "Estimated cost: up to ${:.2} (Street View Static API, ${STREETVIEW_PRICE_PER_1000_USD:.2}/1000 images — Google's first 10,000 images/month are free, so this may cost $0 if you're within that allowance this month; the CLI can't check your remaining quota). Metadata probing above was free.",
         estimate_download_cost_usd(processed.len())
     );
+    if !args.hide_map {
+        println!(
+            "Inset map: 1 additional Static Maps API call this run, ${:.4} (${STATIC_MAP_PRICE_PER_1000_USD:.2}/1000 requests — again, may be $0 within the free tier).",
+            STATIC_MAP_PRICE_PER_1000_USD / 1000.0
+        );
+    }
 
     if args.dry_run {
         println!(
@@ -545,6 +632,44 @@ async fn run() -> Result<(), String> {
             return Ok(());
         }
     }
+
+    // The one Static Maps request happens here — after the confirmation
+    // gate, alongside the Street View downloads below, never under
+    // --dry-run. An auth/permission failure (the common case: the Maps
+    // Static API isn't enabled on the project behind DIRECTIONS_API_KEY)
+    // fails soft rather than aborting the whole run, since most existing
+    // users won't have that API enabled yet.
+    let map_state: Option<MapState> = if args.hide_map {
+        None
+    } else {
+        let map_size = maps::parse_size(&args.map_size).map_err(|e| e.to_string())?;
+        let route_points: Vec<(f64, f64)> = processed.iter().map(|r| (r.lat, r.lon)).collect();
+        let (center, zoom) = geo::bbox_center_zoom(&route_points, map_size.0, map_size.1);
+        let cache_path = output_dir.join(format!("map_{}.png", args.map_size));
+        let request = maps::StaticMapRequest {
+            size: map_size,
+            zoom,
+            center,
+            points: &route_points,
+            color: maps::DEFAULT_PATH_COLOR,
+            weight: maps::DEFAULT_PATH_WEIGHT,
+        };
+        match maps::fetch_or_load_map(&client, &directions_key, &cache_path, &request).await {
+            Ok(path) => Some(MapState {
+                path,
+                center,
+                zoom,
+                size: map_size,
+            }),
+            Err(maps::MapsError::Auth(_)) => {
+                eprintln!(
+                    "map inset needs the Maps Static API enabled for the project behind DIRECTIONS_API_KEY — see https://console.cloud.google.com/apis/library/static-maps-backend.googleapis.com; continuing without the map inset"
+                );
+                None
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    };
 
     let download_inputs: Vec<(usize, f64, f64, f64, bool)> = processed
         .iter()
@@ -580,6 +705,7 @@ async fn run() -> Result<(), String> {
         processed[i].downloaded = true;
         image_paths.push(path);
     }
+    let all_points: Vec<(f64, f64)> = processed.iter().map(|r| (r.lat, r.lon)).collect();
     itinerary::save_to(
         &paths.itinerary_path,
         &itinerary::ItineraryFile {
@@ -589,17 +715,55 @@ async fn run() -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
 
+    // `lineup::dedupe_by_content` drops consecutive visually-identical
+    // frames, which shifts frame-number vs. route-point correspondence — so
+    // it's the *indices* it kept, not just the renumbered paths, that let
+    // the compositing pass below know which route point each surviving
+    // frame came from (see the plan's "frame-to-point association" note).
     let lineup_dir = paths.lineup_dir.clone();
-    tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let deduped = lineup::dedupe_by_content(&image_paths).map_err(|e| e.to_string())?;
-        lineup::renumber_sequentially(&deduped, &lineup_dir, "frame").map_err(|e| e.to_string())?;
-        Ok(())
+    let (frame_paths, frame_points) = tokio::task::spawn_blocking(move || -> Result<_, String> {
+        let kept = lineup::dedupe_by_content_indices(&image_paths).map_err(|e| e.to_string())?;
+        let kept_paths: Vec<std::path::PathBuf> =
+            kept.iter().map(|&i| image_paths[i].clone()).collect();
+        let renumbered = lineup::renumber_sequentially(&kept_paths, &lineup_dir, "frame")
+            .map_err(|e| e.to_string())?;
+        let kept_points: Vec<(f64, f64)> = kept.iter().map(|&i| all_points[i]).collect();
+        Ok((renumbered, kept_points))
     })
     .await
     .map_err(|e| e.to_string())??;
 
+    let video_source_dir = if let Some(map_state) = &map_state {
+        let corner = compositing::MapCorner::parse(&args.map_corner)?;
+        let composite_params = compositing::CompositeParams {
+            corner,
+            margin_percent: compositing::INSET_MARGIN_PERCENT,
+            footprint_percent: compositing::INSET_FOOTPRINT_PERCENT,
+            map_center: map_state.center,
+            map_zoom: map_state.zoom,
+            map_size: map_state.size,
+        };
+        let frames: Vec<(usize, std::path::PathBuf, (f64, f64))> = frame_paths
+            .into_iter()
+            .zip(frame_points)
+            .enumerate()
+            .map(|(i, (path, point))| (i, path, point))
+            .collect();
+        compositing::composite_all(
+            frames,
+            map_state.path.clone(),
+            paths.composited_dir.clone(),
+            composite_params,
+            args.concurrency,
+        )
+        .await?;
+        paths.composited_dir.clone()
+    } else {
+        paths.lineup_dir.clone()
+    };
+
     video::encode_video(
-        &paths.lineup_dir,
+        &video_source_dir,
         "frame",
         args.fps,
         &args.picsize,
@@ -692,6 +856,7 @@ mod tests {
         assert_eq!(paths.images_dir, dir.join("images"));
         assert_eq!(paths.itinerary_path, dir.join("itinerary.json"));
         assert_eq!(paths.lineup_dir, dir.join("lineup"));
+        assert_eq!(paths.composited_dir, dir.join("composited"));
         assert_eq!(paths.video_path, dir.join("joshua_tree.mp4"));
     }
 

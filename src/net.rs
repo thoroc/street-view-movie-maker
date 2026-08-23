@@ -5,6 +5,22 @@ pub fn backoff_delay(attempt: u32) -> Duration {
     Duration::from_millis(200 * 2u64.pow(attempt.min(5)))
 }
 
+/// Percent-encodes a query-parameter value (RFC 3986 unreserved set passed
+/// through unescaped). Shared by modules that build request URLs by hand
+/// (`streetview`, `maps`) rather than via `reqwest`'s own query encoding.
+pub(crate) fn urlencode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
 /// Retries `op` up to `max_attempts` times, sleeping with exponential backoff
 /// between attempts, as long as `is_transient` says the error is worth
 /// retrying. Returns the last error paired with the attempt count it took.
