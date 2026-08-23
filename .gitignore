@@ -7,3 +7,6 @@
 
 # Rust CLI run output (images, itinerary state, rendered video)
 /output/
+
+# Scratch space for anything that shouldn't live in the repo or in .context/
+/.tmp/

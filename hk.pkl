@@ -32,6 +32,12 @@ local pre_commit_steps = (linters) {
         // so no-op there instead of failing every commit made from one.
         fix = "test -d .context && .claude/skills/context-index/scripts/regenerate-context-index.sh || true"
     }
+    ["context_filenames"] {
+        // Blocking, unlike context_index above: a misplaced/misnamed .context file is a real
+        // violation the context-file skill's own docs already claim this enforces, not just an
+        // advisory nudge. Still skips cleanly when .context/ doesn't exist (fresh worktree).
+        check = "! test -d .context || .claude/skills/context-index/scripts/check-context-filenames.sh"
+    }
 }
 
 hooks {
