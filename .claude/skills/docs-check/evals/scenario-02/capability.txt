@@ -1,0 +1,1 @@
+Reconcile docs/ADR/index.yaml against the ADR files on disk in both directions, registering new ADRs via adr-capture and flagging stale entries.

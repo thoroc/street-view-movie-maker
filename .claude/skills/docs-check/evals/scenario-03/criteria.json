@@ -1,0 +1,36 @@
+{
+  "type": "weighted_checklist",
+  "context": "Evaluates whether the agent reproduces a CI build failure locally, correctly diagnoses a broken link from the ENOENT error, fixes the markdown source rather than the ephemeral site/ output, and confirms the fix with a re-run plus page-count sanity check.",
+  "checklist": [
+    {
+      "name": "Reproduces build failure locally",
+      "description": "Runs npx @docmd/core build before proposing any fix",
+      "max_score": 20
+    },
+    {
+      "name": "Correct root-cause diagnosis",
+      "description": "Identifies the renamed file and the stale link from the ENOENT path, not a guess",
+      "max_score": 20
+    },
+    {
+      "name": "Fix targets docs/runbook/alarms.md",
+      "description": "Edits the markdown source, never the built site/ directory",
+      "max_score": 25
+    },
+    {
+      "name": "Re-run confirms exit 0",
+      "description": "Build re-run after the fix and confirmed to succeed",
+      "max_score": 20
+    },
+    {
+      "name": "Page-count sanity check",
+      "description": "Confirms page count still in the expected 45-55 range post-build",
+      "max_score": 10
+    },
+    {
+      "name": "Clear root-cause report",
+      "description": "Final report names the stale rename as root cause",
+      "max_score": 5
+    }
+  ]
+}

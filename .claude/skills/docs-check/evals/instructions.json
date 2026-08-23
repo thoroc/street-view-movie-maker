@@ -1,0 +1,69 @@
+{
+  "instructions": [
+    {
+      "type": "anti-pattern",
+      "why_given": "new knowledge",
+      "content": "NEVER skip the build check before pushing -- a broken build blocks the deployment CI job and requires a separate fix commit, wasting time and polluting git history."
+    },
+    {
+      "type": "anti-pattern",
+      "why_given": "new knowledge",
+      "content": "NEVER leave orphan pages unlinked -- orphan pages are invisible to navigation and search, wasting the effort spent writing them."
+    },
+    {
+      "type": "anti-pattern",
+      "why_given": "new knowledge",
+      "content": "NEVER add an ADR without updating docs/ADR/index.yaml in the same commit -- the index is the canonical discovery mechanism; a missing entry means the ADR may as well not exist."
+    },
+    {
+      "type": "anti-pattern",
+      "why_given": "new knowledge",
+      "content": "NEVER reference a page that does not exist -- broken links degrade trust in the documentation and produce 404s for visitors."
+    },
+    {
+      "type": "procedure",
+      "why_given": "new knowledge",
+      "content": "Build first, ask questions later -- always start with the build check, it is the fastest path to failure and catches mechanical issues early."
+    },
+    {
+      "type": "procedure",
+      "why_given": "new knowledge",
+      "content": "Fix the source, not the output -- when a check reveals a problem, fix the markdown source, not the built site/ directory, since the build is ephemeral."
+    },
+    {
+      "type": "procedure",
+      "why_given": "new knowledge",
+      "content": "Escalate to the right skill -- redirect content quality issues to markdown-authoring, and skill documentation concerns to skill-quality-auditor."
+    },
+    {
+      "type": "procedure",
+      "why_given": "new knowledge",
+      "content": "Automate what you check twice -- if the same issue is caught twice, add a script or CI step so it is never checked manually again."
+    },
+    {
+      "type": "procedure",
+      "why_given": "new knowledge",
+      "content": "After a successful build, confirm the page count is reasonable (typically 45-55 pages for this project) -- a sudden drop signals missing content."
+    },
+    {
+      "type": "procedure",
+      "why_given": "new knowledge",
+      "content": "Reconcile on-disk ADRs with docs/ADR/index.yaml in both directions -- unregistered ADRs need adding, and stale index entries referencing deleted files need removing."
+    },
+    {
+      "type": "procedure",
+      "why_given": "new knowledge",
+      "content": "When llms.enabled is true in docmd.config.json, verify llms.txt, llms-full.txt, and llms.json exist in the build output and contain non-zero entries."
+    },
+    {
+      "type": "preference",
+      "why_given": "preference",
+      "content": "Adapt to the situation -- unless the CI deployment is already broken, the build check may be skipped for trivial doc tweaks (single-word fixes, typo corrections)."
+    },
+    {
+      "type": "procedure",
+      "why_given": "reminder",
+      "content": "The workflow order is: build check, orphan detection, ADR index freshness, LLM output audit, preview, then commit and push."
+    }
+  ]
+}

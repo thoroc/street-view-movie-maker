@@ -1,0 +1,1 @@
+Diagnose a docs build failure from CI error output, fix the broken markdown source (not the built output), and confirm the fix with a re-run.
