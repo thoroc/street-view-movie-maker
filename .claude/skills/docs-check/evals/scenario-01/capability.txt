@@ -1,0 +1,1 @@
+Detect an orphan documentation page after it is added, fix the source index rather than the build output, and re-verify before recommending push.

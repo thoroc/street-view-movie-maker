@@ -1,0 +1,36 @@
+{
+  "type": "weighted_checklist",
+  "context": "Evaluates whether the agent reconciles the ADR index in both directions (unregistered ADRs and stale entries pointing at deleted files), uses adr-capture rather than hand-editing YAML, and reports both findings distinctly.",
+  "checklist": [
+    {
+      "name": "Runs both-direction reconciliation",
+      "description": "Checks disk-vs-index and index-vs-disk, not just the one the user mentioned",
+      "max_score": 20
+    },
+    {
+      "name": "New ADR registered",
+      "description": "adr-026-yearly-cadence added to index.yaml",
+      "max_score": 20
+    },
+    {
+      "name": "Uses adr-capture for the entry",
+      "description": "Defers to adr-capture skill to generate the correct index entry shape",
+      "max_score": 15
+    },
+    {
+      "name": "Stale entry flagged",
+      "description": "adr-012-old-format identified as referencing a missing file",
+      "max_score": 20
+    },
+    {
+      "name": "Stale entry resolved or explicitly called out",
+      "description": "Either removed from index.yaml or restoration proposed, not silently left",
+      "max_score": 15
+    },
+    {
+      "name": "Distinct reporting",
+      "description": "Final report separates the 'added' finding from the 'removed/flagged' finding",
+      "max_score": 10
+    }
+  ]
+}

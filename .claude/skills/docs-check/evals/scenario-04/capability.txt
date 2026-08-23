@@ -1,0 +1,1 @@
+Detect a mismatch between llms.enabled config and actual LLM output files after a build, and route the finding correctly instead of treating a successful build as proof the feature works.

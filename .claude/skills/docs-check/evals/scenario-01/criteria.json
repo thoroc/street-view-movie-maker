@@ -1,0 +1,41 @@
+{
+  "type": "weighted_checklist",
+  "context": "Evaluates whether the agent runs the build check first, correctly detects an orphan page using the documented command, fixes the markdown source rather than the ephemeral build output, and re-verifies before declaring the site ready to push.",
+  "checklist": [
+    {
+      "name": "Build check run first",
+      "description": "npx @docmd/core build (or equivalent) run before other checks",
+      "max_score": 15
+    },
+    {
+      "name": "Orphan detected via command",
+      "description": "Uses the documented comm/rg orphan-detection approach rather than guessing",
+      "max_score": 20
+    },
+    {
+      "name": "Fix targets docs/index.md",
+      "description": "Adds the missing link to docs/index.md, not to site/",
+      "max_score": 25
+    },
+    {
+      "name": "Link placed in correct section",
+      "description": "New link added under the relevant subsection (Architecture) rather than dumped at the end",
+      "max_score": 10
+    },
+    {
+      "name": "Re-verification after fix",
+      "description": "Orphan detection re-run and confirmed clean after the edit",
+      "max_score": 15
+    },
+    {
+      "name": "No site/ edits",
+      "description": "Agent does not modify anything under site/ to 'fix' the orphan",
+      "max_score": 10
+    },
+    {
+      "name": "Clear final report",
+      "description": "Reports the fix made and current push-readiness state",
+      "max_score": 5
+    }
+  ]
+}

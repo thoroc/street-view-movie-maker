@@ -1,0 +1,31 @@
+{
+  "type": "weighted_checklist",
+  "context": "Evaluates whether the agent catches a discrepancy between llms.enabled: true in config and missing LLM output files after a successful build, checking all three expected files and routing the issue correctly.",
+  "checklist": [
+    {
+      "name": "Build check run first",
+      "description": "Build run before the LLM output audit",
+      "max_score": 15
+    },
+    {
+      "name": "All three files checked",
+      "description": "llms.txt, llms-full.txt, and llms.json existence each explicitly verified",
+      "max_score": 30
+    },
+    {
+      "name": "Config-vs-output discrepancy surfaced",
+      "description": "Explicitly notes llms.enabled: true but files absent, not just 'build passed'",
+      "max_score": 25
+    },
+    {
+      "name": "Correctly scoped, not redirected",
+      "description": "Not misrouted to markdown-authoring as a content-quality issue",
+      "max_score": 15
+    },
+    {
+      "name": "Concrete next step recommended",
+      "description": "Suggests checking docmd version/config wiring rather than stopping at 'it's broken'",
+      "max_score": 15
+    }
+  ]
+}
