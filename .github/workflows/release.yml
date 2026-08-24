@@ -53,10 +53,16 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ inputs.version && format('v{0}', inputs.version) || github.ref }}
-      - name: Setup mise
+      - name: Setup mise (rust only)
         uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Only the pinned Rust toolchain is needed to build the binary.
+          # Installing the full mise.toml set (as ci.yml does) pulls in
+          # ffmpeg's asdf plugin, which has no Windows support and needs
+          # nasm on Linux (absent at some historical commits this workflow
+          # can be dispatched against) — neither is a build-time dependency.
+          install_args: rust
       - name: Add cross-compile target
         if: ${{ !matrix.native }}
         run: rustup target add ${{ matrix.target }}
