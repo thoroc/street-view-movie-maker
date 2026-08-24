@@ -101,7 +101,7 @@ entries:
   - path: "ADR/adr-013-native-rust-codec-pure-rust-default-opt-in-h264.md"
     adr: "ADR-013"
     title: "ADR-013: Native Rust encode/mux pipeline — pure-Rust AV1 default, opt-in FFI H.264"
-    status: proposed
+    status: accepted
     date: 2026-08-24
     context:
       - path: ".context/findings/2026-08-24-replacing-ffmpeg-by-rust-native-crate.md"
