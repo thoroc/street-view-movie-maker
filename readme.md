@@ -12,7 +12,7 @@ The tool has been ported to a Rust CLI (`svmm`), which is the only maintained wa
 
 Full instructions — getting Google API credentials, storing them with [fnox](https://fnox.jdx.dev/) instead of a plaintext `.env`, running the CLI, and understanding what a run costs before you commit to it — are in **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**.
 
-Quick start once `mise install` has run (pins the Rust toolchain, FFmpeg, and secrets tooling, and wires up [hk](https://hk.jdx.dev/) git hooks) and your keys are in fnox:
+Quick start once `mise install` has run (pins the Rust toolchain and secrets tooling, and wires up [hk](https://hk.jdx.dev/) git hooks) and your keys are in fnox:
 
 ```sh
 fnox exec -- cargo run --release -- --from "45.517146,-73.579837" --to "43.676533,-79.357132" --output my_route
@@ -20,7 +20,7 @@ fnox exec -- cargo run --release -- --from "45.517146,-73.579837" --to "43.67653
 
 Every run prints the resolved route, image count, and an estimated cost, then waits for confirmation (or exits under `--dry-run`) before downloading anything.
 
-Prebuilt macOS/Linux/Windows binaries are published on the [Releases page](https://github.com/thoroc/street-view-movie-maker/releases) — see [docs/GETTING_STARTED.md § 6](docs/GETTING_STARTED.md#6-releasing) for what they do and don't include (notably: you still need `ffmpeg` on `PATH` yourself).
+Prebuilt macOS/Linux/Windows binaries are published on the [Releases page](https://github.com/thoroc/street-view-movie-maker/releases) — no `ffmpeg` or other runtime dependency needed, but the default output is AV1, which isn't natively playable everywhere yet; see [docs/GETTING_STARTED.md § Output format and playback](docs/GETTING_STARTED.md#output-format-and-playback) for the details and the opt-in H.264 build path.
 
 ### Development
 

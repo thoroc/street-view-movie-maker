@@ -3,12 +3,37 @@ name = "svmm"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["av1"]
+# Pure-Rust AV1 default (see docs/ADR/adr-013): image -> rav1e -> muxide.
+av1 = ["dep:rav1e", "dep:muxide"]
+# Opt-in, source-only H.264 via FFI — never built by release CI, requires a
+# local C toolchain. Mutually exclusive with `av1`; see the compile_error!
+# guard in src/video.rs.
+h264 = ["dep:openh264", "dep:muxide"]
+
 [dependencies]
 anyhow = "1.0.104"
 chrono = { version = "0.4.42", default-features = false, features = ["clock"] }
 geo-types = "0.7.8"
 image = { version = "0.25.6", default-features = false, features = ["png", "jpeg"] }
 imageproc = { version = "0.25.0", default-features = false }
+# default-features off: rav1e's `default` set pulls in its own CLI-binary
+# deps (clap, ivf, y4m, av-metrics, fern, console, scan_fmt, nom) and the
+# `asm` feature (needs `nasm` at compile time) that this project's release
+# CI deliberately avoids installing. We only need the library encode path.
+# TEMPORARY: pinned to a fork with an unreleased AV1 sequence-header parsing
+# fix (upstream muxide 0.2.5 misparses genuine rav1e output — see
+# docs/RISK_REGISTER.md and https://github.com/Michael-A-Kuykendall/muxide/pull/9).
+# Switch back to the crates.io release once that PR merges and ships.
+rav1e = { version = "0.8.1", optional = true, default-features = false }
+muxide = { git = "https://github.com/thoroc/muxide", branch = "fix/av1-decoder-model-info-present-flag-conditional", optional = true }
+# "source" builds Cisco's bundled OpenH264 C source via cc-rs — needs a
+# local C toolchain, which is exactly why this feature is opt-in and never
+# built by release CI (see docs/ADR/adr-013).
+openh264 = { version = "0.9.8", optional = true, default-features = false, features = [
+    "source",
+] }
 polyline = "0.11.0"
 reqwest = { version = "0.13.4", features = ["json", "query"] }
 serde = { version = "1.0.229", features = ["derive"] }

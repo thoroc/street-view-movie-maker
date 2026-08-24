@@ -513,9 +513,10 @@ async fn run() -> Result<(), String> {
     let streetview_key = streetview_key.expect("validated above");
     let directions_key = directions_key.expect("validated above");
 
-    video::check_ffmpeg_available()
-        .await
-        .map_err(|e| e.to_string())?;
+    // Validate --picsize before any Street View API calls are billed — a
+    // malformed or odd-numbered value used to only surface deep inside the
+    // final ffmpeg encode step; it's a required, even "WIDTHxHEIGHT" now.
+    video::parse_picsize(&args.picsize).map_err(|e| e.to_string())?;
 
     let output_dir = resolve_output_dir(&args.output_dir, &args.output);
     let paths = output_paths(&output_dir, &args.output);
@@ -796,7 +797,7 @@ async fn run() -> Result<(), String> {
     .await
     .map_err(|e| e.to_string())??;
 
-    let (video_source_dir, final_frame_paths) = if let Some(map_state) = &map_state {
+    let (_, final_frame_paths) = if let Some(map_state) = &map_state {
         let corner = compositing::MapCorner::parse(&args.map_corner)?;
         let composite_params = compositing::CompositeParams {
             corner,
@@ -827,10 +828,9 @@ async fn run() -> Result<(), String> {
     };
 
     video::encode_video(
-        &video_source_dir,
-        "frame",
-        args.fps,
+        final_frame_paths.clone(),
         &args.picsize,
+        args.fps,
         &paths.video_path,
     )
     .await
