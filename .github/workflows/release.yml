@@ -53,19 +53,20 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ inputs.version && format('v{0}', inputs.version) || github.ref }}
-      - name: Setup mise (rust only)
-        uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+      - name: Install Rust toolchain
+        # Deliberately not jdx/mise-action here: mise's shims lazily
+        # reconcile the FULL mise.toml toolset (not just what install_args
+        # named) the first time a shimmed command like `cargo` runs, which
+        # pulled in ffmpeg's asdf plugin again mid-build — no Windows
+        # plugin exists, and it needs nasm on Linux (absent at some
+        # historical commits this workflow can be dispatched against).
+        # Neither ffmpeg nor hk/pkl are build-time dependencies, so this
+        # uses rustup directly instead. Keep the version in sync with
+        # mise.toml's rust pin.
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master @ 2026-08-05
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Only the pinned Rust toolchain is needed to build the binary.
-          # Installing the full mise.toml set (as ci.yml does) pulls in
-          # ffmpeg's asdf plugin, which has no Windows support and needs
-          # nasm on Linux (absent at some historical commits this workflow
-          # can be dispatched against) — neither is a build-time dependency.
-          install_args: rust
-      - name: Add cross-compile target
-        if: ${{ !matrix.native }}
-        run: rustup target add ${{ matrix.target }}
+          toolchain: "1.97.1"
+          targets: ${{ matrix.target }}
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
       - name: Smoke test (native targets only)

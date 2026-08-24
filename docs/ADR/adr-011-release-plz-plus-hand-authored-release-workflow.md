@@ -1,6 +1,7 @@
 ---
 title: "ADR-011: release-plz plus a hand-authored release workflow for versioning, changelog, and cross-platform releases"
-status: proposed
+status: superseded
+superseded_by: "adr-012"
 date: 2026-08-24
 context:
   - path: ".context/findings/2026-08-24-release-and-changelog-automation.md"
