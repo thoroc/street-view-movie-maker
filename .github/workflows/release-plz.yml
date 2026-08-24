@@ -1,0 +1,74 @@
+name: Release-plz
+
+# Keeps Cargo.toml's version and CHANGELOG.md current from Conventional Commits.
+# Two idempotent steps run on every push to main: `release-pr` opens/updates a
+# version-bump PR (no-op if nothing new to release), and `release` tags the repo
+# once that PR has been merged (no-op if HEAD's version is already tagged). The
+# tag `release` creates is what triggers release.yml's cross-platform build.
+#
+# See docs/ADR/adr-011-release-plz-plus-hand-authored-release-workflow.md and
+# .context/plans/2026-08-24-add-release-and-changelog-pipeline.md for why this
+# shape was chosen over release-please+cargo-dist.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-plz
+  cancel-in-progress: false
+
+jobs:
+  release-plz-release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'thoroc' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          # Falls back to GITHUB_TOKEN if the PAT secret is absent, degrading
+          # to no-CI-on-the-release-PR rather than failing outright (ADR-011).
+          token: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Setup mise
+        uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag and publish a release if Cargo.toml's version is unreleased
+        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+
+  release-plz-pr:
+    name: Release PR
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'thoroc' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Setup mise
+        uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Open or update the release PR
+        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}

@@ -20,6 +20,8 @@ fnox exec -- cargo run --release -- --from "45.517146,-73.579837" --to "43.67653
 
 Every run prints the resolved route, image count, and an estimated cost, then waits for confirmation (or exits under `--dry-run`) before downloading anything.
 
+Prebuilt macOS/Linux/Windows binaries are published on the [Releases page](https://github.com/thoroc/street-view-movie-maker/releases) — see [docs/GETTING_STARTED.md § 6](docs/GETTING_STARTED.md#6-releasing) for what they do and don't include (notably: you still need `ffmpeg` on `PATH` yourself).
+
 ### Development
 
 - `cargo test` runs the unit and integration test suite. Two integration tests that hit the real, billed Google APIs are marked `#[ignore]` — run them explicitly with `cargo test -- --ignored` once your API keys are set.

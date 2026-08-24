@@ -40,6 +40,7 @@ github:
         - jdx/mise-action # Installs the pinned mise toolchain (mise.toml)
         - getplumber/plumber # Plumber's own GitHub Action
         - Swatinem/rust-cache # Caches ~/.cargo and target/ across CI runs
+        - release-plz/action # Versions Cargo.toml/CHANGELOG.md from Conventional Commits (release-plz.yml)
 
     # ===========================================
     # Container images must not use forbidden tags
