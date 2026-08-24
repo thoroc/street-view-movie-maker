@@ -32,7 +32,7 @@ port plan at `.context/plans/2026-08-22-port-street-view-movie-maker-to-rust-cli
 | ------------ | -------------------------------------------------------------------------------------------------------------------------- |
 | `ROUTING`    | Directions API integration, polyline decoding, geo math (`directions.rs`, `geo.rs`), route fingerprinting and resume, avoid-options (tolls/highways/ferries). |
 | `STREETVIEW` | Street View metadata probing and image download, pano dedupe (`streetview.rs`, `itinerary.rs`).                          |
-| `VIDEO`      | Frame lineup/renumbering and ffmpeg encoding (`lineup.rs`, `video.rs`), overlays (inset map, turn signs).                |
+| `VIDEO`      | Frame lineup/renumbering and native Rust encoding (`lineup.rs`, `video/`), overlays (inset map, turn signs).             |
 | `CLI`        | Argument parsing, interactive prompts, confirmation/cost-estimate gates, `--dry-run`/`--fresh` (`main.rs`).              |
 | `GOVERNANCE` | The `.context/` system and project docs: the index, frontmatter contract, ADR capture, and cross-reference integrity.    |
 | `TOOLING`    | Developer workflow: the mise toolchain, pre-commit hooks, the `.claude/` skills/hooks themselves, and CI.                |
