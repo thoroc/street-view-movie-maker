@@ -6,10 +6,12 @@ on:
     paths-ignore:
       - "docs/**"
       - "**/*.md"
+      - ".ctxharness.yml"
   pull_request:
     paths-ignore:
       - "docs/**"
       - "**/*.md"
+      - ".ctxharness.yml"
 
 permissions:
   contents: read
