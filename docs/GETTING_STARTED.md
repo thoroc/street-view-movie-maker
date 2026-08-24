@@ -19,6 +19,16 @@ Setup:
 4. In **APIs & Services → Credentials**, create an API key. One key works across all three APIs. Optionally restrict it (API restrictions to just those three, and/or application restrictions) since it'll sit in your local secrets store.
 5. Official docs, if you want the detail: [Street View API key setup](https://developers.google.com/maps/documentation/streetview/get-api-key), [Directions API key setup](https://developers.google.com/maps/documentation/directions/get-api-key).
 
+### Adding a new Google API to an existing key later
+
+A future feature may need another Google Maps Platform API added to a key you already have (this happened when the inset-map feature above added a dependency on Maps Static API). Two separate gates have to pass, and it's easy to fix only one of them:
+
+1. **Find which project your key belongs to.** Go to [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials). The project picker dropdown at the top of the page shows the currently-selected project — a key only shows up on this page while that key's project is selected, so you may need to switch projects (via that same dropdown) to find it. To confirm you've found the right key, reveal its value locally with `fnox get <KEY_NAME>` and compare against "Show key" next to each entry on this page.
+2. **Enable the API on that project.** With the right project still selected, go to [console.cloud.google.com/apis/library](https://console.cloud.google.com/apis/library), search for the API by name, and click it. A blue **ENABLE** button means it isn't enabled yet — click it. A greyed-out **MANAGE** button means it already is.
+3. **Check the key's own API restrictions.** Back on the Credentials page, click the key's name (not the eye icon) to open its settings. Under **"API restrictions"**: if it says "Don't restrict key", skip this step. If it says "Restrict key" with a checklist below, the new API needs its checkbox ticked too — a key can be scoped to only the APIs it originally needed, and enabling an API on the project does **not** update that list automatically. Tick it and click **Save**.
+
+Both gates apply independently: an API enabled on the project but not checked in the key's restriction list still fails, and vice versa.
+
 ## 2. Store the keys with fnox
 
 Don't put real keys in a plaintext `.env`. This repo's `fnox.toml` is configured with an `age` encryption provider, so only ciphertext ever gets committed:
@@ -97,6 +107,10 @@ fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Si
 - `--map-size` (default `200x200`) sets the *fetched* map image's resolution, not its on-frame size — the inset's on-frame footprint is a fixed percentage of the frame's shorter dimension, so it stays proportionally consistent across different `--picsize` aspect ratios.
 
 Only one Maps Static API call happens per run, regardless of frame count — the base map image is fetched once and cached at `<output-dir>/map_<map-size>.png`; the moving marker is drawn locally on a copy of that image for each frame. If the project behind `DIRECTIONS_API_KEY` doesn't have the Maps Static API enabled, the run doesn't fail — it prints a one-time message and finishes the video without the inset instead.
+
+Here's a frame from the same demo route as above, with the inset now showing the whole route and a marker at the current position:
+
+![A frame from an svmm output video, with a small inset map in the bottom-right corner showing the route and a position marker](media/demo-inset-map-frame.jpg)
 
 ## 4. Cost
 
