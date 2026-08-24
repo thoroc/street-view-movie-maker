@@ -2,7 +2,7 @@
 
 It makes movies out of Google Street View images!
 
-You provide point A and point B. It uses the Google Roads API to get directions from A to B, then repeatedly looks for Street View images along that path, and converts them into a movie.
+You provide point A and point B. It uses the Google Directions API to get directions from A to B, then repeatedly looks for Street View images along that path, and converts them into a movie.
 
 ## Rust CLI (`svmm`)
 
@@ -50,4 +50,4 @@ Step 3 was computing the correct heading (compass direction) from A to B, which 
 
 But there were lots of failed hacks in between. The math for computing distances and angles on spheres is very cool---the [Haversine formula](https://en.wikipedia.org/wiki/Haversine_formula), but I probably would have enjoyed learning about it more in high school. The best among them used the GeoPy package, but was ugly: with [GeoPy](https://geopy.readthedocs.io/), I couldn't compute the heading from A to B. But, given point A, a bearing, and a distance, I could compute a destination C. I could also compute the distance between any two points. So, I computed 360 potential destinations, each a degree apart and a fixed distance from A, and then found the one that was nearest to C, which gave the approximate heading.
 
-Step 4 was concatenating the images into a movie, for which [FFMPEG](https://ffmpeg.org/) is indispensible!
+Step 4 was concatenating the images into a movie, for which [FFMPEG](https://ffmpeg.org/) is indispensable!
