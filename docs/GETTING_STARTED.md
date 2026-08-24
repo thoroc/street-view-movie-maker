@@ -147,3 +147,45 @@ Example measured on a real ~90km airport-to-village route:
 ## 5. Resuming and starting over
 
 Re-running the same `--output` name resumes from persisted state (`<output-dir>/itinerary.json`) rather than re-probing and re-downloading everything — useful if a run gets interrupted. If you change `--from`/`--to` or the tuning flags for the same `--output` name, the CLI detects the mismatch and refuses to resume (to avoid silently mixing two different routes); pass `--fresh` to start over deliberately.
+
+## 6. Releasing
+
+### If you downloaded a prebuilt binary
+
+Binaries on the [Releases page](https://github.com/thoroc/street-view-movie-maker/releases) are
+built by CI from the exact tagged source — nothing hand-assembled. Two things they don't include:
+
+- **`ffmpeg` is not bundled.** `svmm` shells out to `ffmpeg` on `PATH` at runtime; install it
+  yourself (the `mise install` path above does this for you automatically, but a downloaded
+  binary doesn't go through that).
+- **The binaries are unsigned.** macOS Gatekeeper and Windows SmartScreen will warn on first run;
+  there's no code-signing/notarization pipeline for this project.
+
+### If you're maintaining this repo
+
+Versioning and the changelog are automated by [`release-plz`](https://release-plz.dev/), not
+edited by hand:
+
+1. Conventional Commits pushed to `main` accumulate in a standing "release PR" that
+   `release-plz` opens and keeps up to date — its diff is the version bump plus the
+   `CHANGELOG.md` entry. Review and merge it like any other PR; nothing else is manual.
+2. Merging it is itself a push to `main`, which is what `release-plz` uses to notice the new,
+   as-yet-untagged version and create the git tag.
+3. That tag push triggers `.github/workflows/release.yml`, which cross-compiles for macOS
+   (arm64 + x86_64), Linux (x86_64), and Windows (x86_64) and publishes the binaries to a
+   GitHub Release with the `CHANGELOG.md` entry as its notes.
+
+`release-plz.yml` opens its PR using the repo secret `RELEASE_PLZ_TOKEN` (falling back to the
+default `GITHUB_TOKEN` if absent) so that `ci.yml` actually runs on the release PR before merge —
+GitHub does not trigger `pull_request`-event workflows on a PR authored by the default bot
+identity. To (re)create that secret:
+
+1. Create a fine-grained PAT at <https://github.com/settings/personal-access-tokens/new>, scoped
+   to only this repository, with **Contents: Read and write** and **Pull requests: Read and
+   write** permissions.
+2. `gh secret set RELEASE_PLZ_TOKEN --repo thoroc/street-view-movie-maker` from a terminal
+   authenticated as you, and paste the token when prompted (avoids it ever landing in shell
+   history).
+
+See `docs/ADR/adr-011-release-plz-plus-hand-authored-release-workflow.md` for why this shape was
+chosen over alternatives.
