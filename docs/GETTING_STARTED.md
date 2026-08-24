@@ -47,14 +47,14 @@ Run the CLI with `fnox exec -- ...` so the keys are loaded as env vars for that 
 ## 3. Run it
 
 ```sh
-fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde"
+fnox exec -- cargo run --release -- --from "Eiffel Tower" --to "Arc de Triomphe"
 ```
 
 `--from`/`--to` accept `"lat,lon"` or a free-text place name — both go through the same resolution path. Run `cargo run -- --help` for the full flag list. One gotcha: pass negative numeric values with `=`, e.g. `--pitch=-30`, not `--pitch -30` — a bare `-30` after a space is read as an unrecognized flag, not this flag's value.
 
 Every run prints the resolved route, the number of images it will download, and an estimated cost, then stops for confirmation (or exits immediately with `--dry-run`) before anything is downloaded. Nothing is downloaded without that gate unless you pass `--yes`.
 
-`--output` (the filestem for the video and preview image, and the default output directory name) is optional — pass it to name a run yourself, or omit it and the CLI computes `<from>-<to>-<datetime>` from the values you gave `--from`/`--to` and the current local time (e.g. `48-8611-2-3358-simiane-la-rotonde-20260824T090043`).
+`--output` (the filestem for the video and preview image, and the default output directory name) is optional — pass it to name a run yourself, or omit it and the CLI computes `<from>-<to>-<datetime>` from the values you gave `--from`/`--to` and the current local time (e.g. `eiffel-tower-arc-de-triomphe-20260824T090043`).
 
 ### What to expect
 
@@ -114,7 +114,7 @@ fnox exec -- cargo run --release -- --interactive
 `--interactive` fills in only what's missing. Combine it with any flags you already know:
 
 ```sh
-fnox exec -- cargo run --release -- --interactive --from "Marseille Provence Airport" --to "Simiane-la-Rotonde"
+fnox exec -- cargo run --release -- --interactive --from "Eiffel Tower" --to "Arc de Triomphe"
 ```
 
 Here `--from`/`--to` are used as given, and you're only prompted for `--output` (showing the computed `<from>-<to>-<datetime>` default, editable or acceptable as-is) and the remaining tuning flags. Without `--interactive`, `--from`/`--to` left unset cause the CLI to error out and suggest `--interactive` instead of guessing a value for you; `--output` is optional either way (see [Run it](#3-run-it) above).
@@ -124,7 +124,7 @@ Here `--from`/`--to` are used as given, and you're only prompted for `--output` 
 These mirror Google Maps' own "Avoid tolls/highways/ferries" toggles: pass any combination to steer the one route the Directions API returns away from that feature. All three default to off (avoid nothing), matching Maps' own default:
 
 ```sh
-fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde" --output my_trip --avoid-tolls --avoid-highways
+fnox exec -- cargo run --release -- --from "Eiffel Tower" --to "Arc de Triomphe" --output my_trip --avoid-tolls --avoid-highways
 ```
 
 Under `--interactive`, you're prompted for each (y/N) alongside the other tuning values.
@@ -134,7 +134,7 @@ Under `--interactive`, you're prompted for each (y/N) alongside the other tuning
 Every run composites a small inset map into a frame corner, centered on your current position and rotated so your direction of travel always points to the top ("track-up", like a car GPS display, not fixed north-up). It's on by default:
 
 ```sh
-fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde" --map-corner top-left
+fnox exec -- cargo run --release -- --from "Eiffel Tower" --to "Arc de Triomphe" --map-corner top-left
 ```
 
 - `--hide-map` turns it off entirely (no Maps Static API call, no cost line, no `composited/` output directory — the video is built straight from the downloaded frames).
