@@ -6,9 +6,6 @@ pkl = "0.32.1"
 # on a machine with prior rustup use but "minimal" (neither) on a fresh CI
 # runner — hk.pkl's cargo_fmt/cargo_clippy steps need both everywhere.
 rust = { version = "1.97.1", components = ["clippy", "rustfmt"] }
-# conda-forge ships a prebuilt binary at this exact version, avoiding the
-# asdf plugin's from-source build (which needs nasm and is much slower in CI).
-"conda:ffmpeg" = "9.0.1"
 fnox = "1.33.0"
 age = "1.3.1"
 "npm:markdownlint-cli" = "0.49.1"
