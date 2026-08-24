@@ -1,0 +1,37 @@
+name: Release Please
+
+# Keeps Cargo.toml's version and CHANGELOG.md current from Conventional
+# Commits and tags the repo once the resulting release PR merges. Unlike
+# release-plz (this repo's first attempt — see
+# docs/ADR/adr-012-switch-to-release-please.md), this is purely git-tag and
+# manifest driven: it never queries a package registry, which matters since
+# svmm is never published to crates.io.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Create/update release PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          # Falls back to GITHUB_TOKEN if the PAT secret is absent, so a PR
+          # still gets opened (just without ci.yml running on it — see the
+          # ADR) rather than the workflow failing outright.
+          token: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

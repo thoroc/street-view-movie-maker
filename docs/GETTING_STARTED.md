@@ -163,22 +163,24 @@ built by CI from the exact tagged source — nothing hand-assembled. Two things 
 
 ### If you're maintaining this repo
 
-Versioning and the changelog are automated by [`release-plz`](https://release-plz.dev/), not
-edited by hand:
+Versioning and the changelog are automated by
+[`release-please`](https://github.com/googleapis/release-please), not edited by hand:
 
 1. Conventional Commits pushed to `main` accumulate in a standing "release PR" that
-   `release-plz` opens and keeps up to date — its diff is the version bump plus the
+   `release-please` opens and keeps up to date — its diff is the version bump plus the
    `CHANGELOG.md` entry. Review and merge it like any other PR; nothing else is manual.
-2. Merging it is itself a push to `main`, which is what `release-plz` uses to notice the new,
+2. Merging it is itself a push to `main`, which is what `release-please` uses to notice the new,
    as-yet-untagged version and create the git tag.
 3. That tag push triggers `.github/workflows/release.yml`, which cross-compiles for macOS
    (arm64 + x86_64), Linux (x86_64), and Windows (x86_64) and publishes the binaries to a
    GitHub Release with the `CHANGELOG.md` entry as its notes.
 
-`release-plz.yml` opens its PR using the repo secret `RELEASE_PLZ_TOKEN` (falling back to the
+`release-please.yml` opens its PR using the repo secret `RELEASE_PLZ_TOKEN` (falling back to the
 default `GITHUB_TOKEN` if absent) so that `ci.yml` actually runs on the release PR before merge —
 GitHub does not trigger `pull_request`-event workflows on a PR authored by the default bot
-identity. To (re)create that secret:
+identity. (The secret's name is a holdover from this project's first attempt at this pipeline,
+which used a different tool called release-plz — see the ADR below; it's not misconfigured, just
+not perfectly named.) To (re)create that secret:
 
 1. Create a fine-grained PAT at <https://github.com/settings/personal-access-tokens/new>, scoped
    to only this repository, with **Contents: Read and write** and **Pull requests: Read and
@@ -187,5 +189,5 @@ identity. To (re)create that secret:
    authenticated as you, and paste the token when prompted (avoids it ever landing in shell
    history).
 
-See `docs/ADR/adr-011-release-plz-plus-hand-authored-release-workflow.md` for why this shape was
-chosen over alternatives.
+See `docs/ADR/adr-012-switch-to-release-please.md` (and `adr-011`, which it supersedes) for why
+this shape was chosen over alternatives.
