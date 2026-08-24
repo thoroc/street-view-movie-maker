@@ -14,10 +14,10 @@ assertions:
   - id: root-readme
     extractor: fileExists
     extractorArgs:
-      path: readme.md
+      path: README.md
     scanner: literalInMd
     scannerArgs:
-      literal: "readme.md"
+      literal: "README.md"
   - id: root-getting-started
     extractor: fileExists
     extractorArgs:

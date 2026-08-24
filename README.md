@@ -2,7 +2,7 @@
 
 It makes movies out of Google Street View images!
 
-You provide point A and point B. It uses the Google Roads API to get directions from A to B, then repeatedly looks for Street View images along that path, and converts them into a movie.
+You provide point A and point B. It uses the Google Directions API to get directions from A to B, then repeatedly looks for Street View images along that path, and converts them into a movie.
 
 ## Rust CLI (`svmm`)
 
@@ -24,12 +24,14 @@ Prebuilt macOS/Linux/Windows binaries are published on the [Releases page](https
 
 ### Development
 
-- `cargo test` runs the unit and integration test suite. Two integration tests that hit the real, billed Google APIs are marked `#[ignore]` — run them explicitly with `cargo test -- --ignored` once your API keys are set.
+- `cargo test` runs the unit and integration test suite. Four integration tests that hit the real, billed Google APIs are marked `#[ignore]` — run them explicitly with `cargo test -- --ignored` once your API keys are set.
 - `hk run check` / `hk fix` run the same formatting and lint checks as the git hooks, on demand.
 
 ## Project history
 
-When using Google Maps to plan a route I haven't driven or walked before, I always though it would be nifty to be able to preview the directions as a video. Obviously, you can check out the route by looking at Street View at random points, or navigating in Street View mode itself. But these options are tedious!
+*The rest of this README describes the original 2016 Python prototype and predates the Rust port above — kept here as background, not as a description of how `svmm` works today.*
+
+When using Google Maps to plan a route I haven't driven or walked before, I always thought it would be nifty to be able to preview the directions as a video. Obviously, you can check out the route by looking at Street View at random points, or navigating in Street View mode itself. But these options are tedious!
 
 Other people have had the same idea; at least two have created web services to do it:
 
@@ -50,4 +52,4 @@ Step 3 was computing the correct heading (compass direction) from A to B, which 
 
 But there were lots of failed hacks in between. The math for computing distances and angles on spheres is very cool---the [Haversine formula](https://en.wikipedia.org/wiki/Haversine_formula), but I probably would have enjoyed learning about it more in high school. The best among them used the GeoPy package, but was ugly: with [GeoPy](https://geopy.readthedocs.io/), I couldn't compute the heading from A to B. But, given point A, a bearing, and a distance, I could compute a destination C. I could also compute the distance between any two points. So, I computed 360 potential destinations, each a degree apart and a fixed distance from A, and then found the one that was nearest to C, which gave the approximate heading.
 
-Step 4 was concatenating the images into a movie, for which [FFMPEG](https://ffmpeg.org/) is indispensible!
+Step 4 was concatenating the images into a movie, for which [FFMPEG](https://ffmpeg.org/) is indispensable!

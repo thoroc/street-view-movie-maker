@@ -3,7 +3,7 @@
 `svmm` is a Rust CLI that turns a route (point A to point B) into a movie made of Google Street View images, using
 the Directions API for the route and the Street View Static API for frames, encoded into video by a native Rust
 encoder (no `ffmpeg` dependency; see [ADR-013](docs/ADR/adr-013-native-rust-codec-pure-rust-default-opt-in-h264.md)).
-See [readme.md](readme.md) and [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for setup and usage. The repo is
+See [README.md](README.md) and [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for setup and usage. The repo is
 hosted on GitHub; use `gh` for PRs, issues, and checks.
 
 This file wires in the standing instructions under `.claude/instructions/`. They are not auto-loaded by Claude Code
