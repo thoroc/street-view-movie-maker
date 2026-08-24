@@ -146,3 +146,19 @@ jobs:
       - name: Create a new release
         if: env.EXISTS == 'false'
         run: gh release create "$TAG" --title "$TAG" --notes-file release-notes.md artifacts/*
+      - name: Apply a city codename (major releases only)
+        # Codenames are for major (vN.0.0) releases only, per
+        # release-codenames.json — v0.x releases (including the historical
+        # backfill) keep a plain title. Re-runs are safe: this just
+        # re-applies the same title idempotently.
+        run: |
+          MAJOR="${TAG#v}"
+          MAJOR="${MAJOR%%.*}"
+          if [ "$MAJOR" -ge 1 ]; then
+            CODENAME=$(jq -r --argjson i "$((MAJOR - 1))" '.cities[$i] // empty' release-codenames.json)
+            if [ -n "$CODENAME" ]; then
+              gh release edit "$TAG" --title "$TAG — $CODENAME"
+            else
+              echo "::notice::No codename at index $((MAJOR - 1)) in release-codenames.json for $TAG — leaving title as-is."
+            fi
+          fi

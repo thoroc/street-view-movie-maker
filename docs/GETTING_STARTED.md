@@ -175,6 +175,14 @@ Versioning and the changelog are automated by
    (arm64 + x86_64), Linux (x86_64), and Windows (x86_64) and publishes the binaries to a
    GitHub Release with the `CHANGELOG.md` entry as its notes.
 
+**Major releases (`v1.0.0`, `v2.0.0`, ...) get a city codename** — `v0.x` releases (including the
+historical `v0.1.0`-`v0.3.0` backfill) don't. `release.yml` looks up
+`release-codenames.json`'s `cities` array by major-version index (`v1.x.x` → index 0, `v2.x.x` →
+index 1, ...) and appends it to the release title, e.g. `v1.0.0 — Tokyo`. The list is ordered by
+descending world-city population and is a static snapshot, not auto-updated; if a major version
+ever exceeds the list's length, the title is simply left unadorned rather than failing the
+release.
+
 `release-please.yml` opens its PR using the repo secret `RELEASE_PLZ_TOKEN` (falling back to the
 default `GITHUB_TOKEN` if absent) so that `ci.yml` actually runs on the release PR before merge —
 GitHub does not trigger `pull_request`-event workflows on a PR authored by the default bot
