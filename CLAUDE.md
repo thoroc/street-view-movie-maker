@@ -33,6 +33,10 @@ skills reference them too, but the rubric and vocabulary live here, not in the s
 
 @.claude/instructions/skill-authoring.md
 
+## Rust code style and maintainability
+
+@.claude/instructions/rust-style.md
+
 ## Tooling
 
 @.claude/instructions/rtk.md
