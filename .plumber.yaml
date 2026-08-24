@@ -41,7 +41,7 @@ github:
         - getplumber/plumber # Plumber's own GitHub Action
         - Swatinem/rust-cache # Caches ~/.cargo and target/ across CI runs
         - googleapis/release-please-action # Versions Cargo.toml/CHANGELOG.md from Conventional Commits (release-please.yml)
-        - dtolnay/rust-toolchain # Installs a pinned Rust toolchain for release binary builds (release.yml)
+        - dtolnay/rust-toolchain # Installs a pinned Rust toolchain for release binary builds and the h264 CI smoke build (release.yml, ci.yml)
 
     # ===========================================
     # Container images must not use forbidden tags

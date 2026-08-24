@@ -53,3 +53,32 @@ jobs:
       - name: Cargo audit (RUSTSEC advisories)
         continue-on-error: true
         run: cargo audit
+
+  h264-smoke-build:
+    # Non-blocking: the opt-in `h264` feature is never built or published by
+    # release.yml (docs/ADR/adr-013-native-rust-codec-pure-rust-default-opt-in-h264.md),
+    # so this only proves the feature still compiles from source on the two
+    # platforms most likely to build it, without gating the default pipeline
+    # on a C-toolchain build path most contributors never touch.
+    name: h264 smoke build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install Rust toolchain
+        # Not jdx/mise-action — see release.yml's own comment on why a plain
+        # pinned rustup toolchain is preferred for a build job that only
+        # needs the compiler, not the full mise.toml toolset. Keep the
+        # version in sync with mise.toml's rust pin.
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master @ 2026-08-05
+        with:
+          toolchain: "1.97.1"
+      - name: Cache cargo registry and target dir
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Build (h264 feature, no default features)
+        run: cargo build --no-default-features --features h264 --locked

@@ -72,6 +72,37 @@ fnox exec -- cargo run --release -- --from "48.8611,2.3358" --to "48.8592,2.3376
 
 A re-run resumes from `./output/demo` rather than re-downloading, so it's safe to run again after the first time.
 
+### Output format and playback
+
+The default build has no runtime dependencies at all — no `ffmpeg`, nothing else on `PATH` — because
+encoding is compiled straight into the binary as pure Rust (`image` for frame decode, `rav1e` for AV1
+encode, `muxide` for MP4 muxing). The tradeoff is the output codec: AV1 is the only mature pure-Rust
+video encoder, and it isn't reliably natively playable everywhere yet. If a downloaded `.mp4` doesn't
+play, it's very likely one of these, not a broken file:
+
+- **macOS**: QuickTime only decodes AV1 in hardware, and only on M3-and-later Macs. Any Intel Mac or
+  M1/M2 Mac will refuse the file in QuickTime (VLC or a browser tab generally still play it fine).
+- **Windows**: Media Player has no AV1 decoder out of the box — install the free "AV1 Video
+  Extension" from the Microsoft Store.
+- **Linux**: depends entirely on the desktop's installed codecs; no universal default either way.
+
+If you need output that plays natively everywhere without any of the above, build from source with
+the opt-in `h264` feature instead of using a prebuilt binary:
+
+```sh
+cargo install --path . --no-default-features --features h264
+```
+
+This pulls in [`openh264`](https://github.com/cisco/openh264) (Cisco, BSD-2-Clause) via FFI and
+compiles it from bundled C source, so it needs a local C toolchain — that's also why this path is
+never built by release CI and never shipped as a prebuilt binary. On the licensing side: Cisco's
+MPEG LA royalty arrangement covers *Cisco's own prebuilt* `openh264` binaries (why Firefox downloads
+Cisco's binary at runtime instead of statically linking a self-built copy); statically linking a
+self-compiled copy into a binary you build and distribute yourself sits outside that arrangement, but
+this is not legal advice — if you're distributing binaries built with the `h264` feature, route the
+question to your own Legal/Compliance function before treating it as settled (see
+`docs/ADR/adr-013-native-rust-codec-pure-rust-default-opt-in-h264.md`).
+
 ### Prefer prompts to flags? Use `--interactive`
 
 Don't want to memorise flag names, or unsure what `--fov`, `--radius`, or `--hop-size` should be? Pass `-i`/`--interactive` and the CLI asks for each value in turn, showing its default in brackets — press enter to accept it, or type a value to override:
@@ -155,11 +186,12 @@ Re-running the same `--output` name resumes from persisted state (`<output-dir>/
 Binaries on the [Releases page](https://github.com/thoroc/street-view-movie-maker/releases) are
 built by CI from the exact tagged source — nothing hand-assembled. Two things they don't include:
 
-- **`ffmpeg` is not bundled.** `svmm` shells out to `ffmpeg` on `PATH` at runtime; install it
-  yourself (the `mise install` path above does this for you automatically, but a downloaded
-  binary doesn't go through that).
 - **The binaries are unsigned.** macOS Gatekeeper and Windows SmartScreen will warn on first run;
   there's no code-signing/notarization pipeline for this project.
+
+There's no `ffmpeg` (or any other) runtime dependency to install — the default build encodes video
+entirely in-process. See [Output format and playback](#output-format-and-playback) above for what
+that means for the output codec, and the opt-in build path for guaranteed native playback.
 
 ### If you're maintaining this repo
 
