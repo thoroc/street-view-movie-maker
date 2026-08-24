@@ -24,12 +24,14 @@ Prebuilt macOS/Linux/Windows binaries are published on the [Releases page](https
 
 ### Development
 
-- `cargo test` runs the unit and integration test suite. Two integration tests that hit the real, billed Google APIs are marked `#[ignore]` — run them explicitly with `cargo test -- --ignored` once your API keys are set.
+- `cargo test` runs the unit and integration test suite. Four integration tests that hit the real, billed Google APIs are marked `#[ignore]` — run them explicitly with `cargo test -- --ignored` once your API keys are set.
 - `hk run check` / `hk fix` run the same formatting and lint checks as the git hooks, on demand.
 
 ## Project history
 
-When using Google Maps to plan a route I haven't driven or walked before, I always though it would be nifty to be able to preview the directions as a video. Obviously, you can check out the route by looking at Street View at random points, or navigating in Street View mode itself. But these options are tedious!
+*The rest of this README describes the original 2016 Python prototype and predates the Rust port above — kept here as background, not as a description of how `svmm` works today.*
+
+When using Google Maps to plan a route I haven't driven or walked before, I always thought it would be nifty to be able to preview the directions as a video. Obviously, you can check out the route by looking at Street View at random points, or navigating in Street View mode itself. But these options are tedious!
 
 Other people have had the same idea; at least two have created web services to do it:
 
