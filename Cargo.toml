@@ -5,7 +5,7 @@ edition = "2024"
 
 [features]
 default = ["av1"]
-# Pure-Rust AV1 default (see docs/ADR/adr-011): image -> rav1e -> muxide.
+# Pure-Rust AV1 default (see docs/ADR/adr-013): image -> rav1e -> muxide.
 av1 = ["dep:rav1e", "dep:muxide"]
 # Opt-in, source-only H.264 via FFI — never built by release CI, requires a
 # local C toolchain. Mutually exclusive with `av1`; see the compile_error!
@@ -28,7 +28,12 @@ imageproc = { version = "0.25.0", default-features = false }
 # Switch back to the crates.io release once that PR merges and ships.
 rav1e = { version = "0.8.1", optional = true, default-features = false }
 muxide = { git = "https://github.com/thoroc/muxide", branch = "fix/av1-decoder-model-info-present-flag-conditional", optional = true }
-openh264 = { version = "0.9.8", optional = true }
+# "source" builds Cisco's bundled OpenH264 C source via cc-rs — needs a
+# local C toolchain, which is exactly why this feature is opt-in and never
+# built by release CI (see docs/ADR/adr-013).
+openh264 = { version = "0.9.8", optional = true, default-features = false, features = [
+    "source",
+] }
 polyline = "0.11.0"
 reqwest = { version = "0.13.4", features = ["json", "query"] }
 serde = { version = "1.0.229", features = ["derive"] }
