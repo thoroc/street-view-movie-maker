@@ -47,18 +47,22 @@ Run the CLI with `fnox exec -- ...` so the keys are loaded as env vars for that 
 ## 3. Run it
 
 ```sh
-fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde" --output my_trip
+fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde"
 ```
 
 `--from`/`--to` accept `"lat,lon"` or a free-text place name — both go through the same resolution path. Run `cargo run -- --help` for the full flag list. One gotcha: pass negative numeric values with `=`, e.g. `--pitch=-30`, not `--pitch -30` — a bare `-30` after a space is read as an unrecognized flag, not this flag's value.
 
 Every run prints the resolved route, the number of images it will download, and an estimated cost, then stops for confirmation (or exits immediately with `--dry-run`) before anything is downloaded. Nothing is downloaded without that gate unless you pass `--yes`.
 
+`--output` (the filestem for the video and preview image, and the default output directory name) is optional — pass it to name a run yourself, or omit it and the CLI computes `<from>-<to>-<datetime>` from the values you gave `--from`/`--to` and the current local time (e.g. `48-8611-2-3358-simiane-la-rotonde-20260824T090043`).
+
 ### What to expect
 
 Here's a single frame from a real run over a short, cheap demo route (Rue de Rivoli, by the Louvre), which resolved the route, downloaded 342 Street View frames along it, and encoded them into a video:
 
 ![A frame from an svmm output video, showing the Louvre courtyard from street level](media/demo-baseline-run-frame.png)
+
+Alongside the video, every run also saves one representative still (the middle frame of the final output) as a preview image next to it — same filestem, `.jpg` extension — so you can glance at the result without opening the video.
 
 Reproduce it with `mise run demo`, or directly:
 
@@ -82,7 +86,7 @@ fnox exec -- cargo run --release -- --interactive
 fnox exec -- cargo run --release -- --interactive --from "Marseille Provence Airport" --to "Simiane-la-Rotonde"
 ```
 
-Here `--from`/`--to` are used as given, and you're only prompted for `--output` and the remaining tuning flags. Without `--interactive`, any of `--from`/`--to`/`--output` left unset causes the CLI to error out and suggest `--interactive` instead of guessing a value for you.
+Here `--from`/`--to` are used as given, and you're only prompted for `--output` (showing the computed `<from>-<to>-<datetime>` default, editable or acceptable as-is) and the remaining tuning flags. Without `--interactive`, `--from`/`--to` left unset cause the CLI to error out and suggest `--interactive` instead of guessing a value for you; `--output` is optional either way (see [Run it](#3-run-it) above).
 
 ### Steering the route: `--avoid-tolls`/`--avoid-highways`/`--avoid-ferries`
 
@@ -96,19 +100,19 @@ Under `--interactive`, you're prompted for each (y/N) alongside the other tuning
 
 ### Inset route map: `--hide-map`/`--map-corner`/`--map-size`
 
-Every run composites a small inset map of the whole route into a frame corner, with a marker that moves along the route as the video progresses. It's on by default:
+Every run composites a small inset map into a frame corner, centered on your current position and panning to stay centered as the video progresses. It's on by default:
 
 ```sh
-fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde" --output my_trip --map-corner top-left
+fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde" --map-corner top-left
 ```
 
 - `--hide-map` turns it off entirely (no Maps Static API call, no cost line, no `composited/` output directory — the video is built straight from the downloaded frames).
 - `--map-corner` picks which corner it sits in: `top-left`, `top-right`, `bottom-left`, or `bottom-right` (default).
-- `--map-size` (default `200x200`) sets the *fetched* map image's resolution, not its on-frame size — the inset's on-frame footprint is a fixed percentage of the frame's shorter dimension, so it stays proportionally consistent across different `--picsize` aspect ratios.
+- `--map-size` (default `200x200`) sets the size of the local-area window panned around your position, not the on-frame footprint (a fixed percentage of the frame's shorter dimension, so it stays proportionally consistent across different `--picsize` aspect ratios) and not the raw Maps Static request size (see below).
 
-Only one Maps Static API call happens per run, regardless of frame count — the base map image is fetched once and cached at `<output-dir>/map_<map-size>.png`; the moving marker is drawn locally on a copy of that image for each frame. If the project behind `DIRECTIONS_API_KEY` doesn't have the Maps Static API enabled, the run doesn't fail — it prints a one-time message and finishes the video without the inset instead.
+Only one Maps Static API call happens per run, regardless of frame count: the CLI always fetches one larger base map (640x640, the API's free-tier maximum) covering the whole route, cached at `<output-dir>/map.png`. Per frame, it draws the marker on that base image at its true position, then crops a `--map-size` window centered on the marker and pastes that into the corner — so the inset stays centered on you, panning across the cached image, with no extra API calls. If the project behind `DIRECTIONS_API_KEY` doesn't have the Maps Static API enabled, the run doesn't fail — it prints a one-time message and finishes the video without the inset instead.
 
-Here's a frame from the same demo route as above, with the inset now showing the whole route and a marker at the current position:
+Here's a frame from the same demo route as above, with the inset showing a marker centered in a zoomed-in local view around the current position:
 
 ![A frame from an svmm output video, with a small inset map in the bottom-right corner showing the route and a position marker](media/demo-inset-map-frame.jpg)
 

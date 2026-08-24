@@ -56,6 +56,30 @@ pub fn corner_rect(
     (x, y, footprint, footprint)
 }
 
+/// Computes the `(x, y, width, height)` window to crop out of a `base_size`
+/// image so it's centered on `center_px` — clamped so the crop never runs
+/// off the base image's edges, and clamped to `base_size` if `crop_size` is
+/// larger than the base image itself. Used to pan/crop a small local-area
+/// window around the current position out of one larger, whole-route base
+/// map, rather than re-fetching a re-centered map per frame.
+fn crop_window(
+    base_size: (u32, u32),
+    center_px: (f64, f64),
+    crop_size: (u32, u32),
+) -> (u32, u32, u32, u32) {
+    let crop_w = crop_size.0.min(base_size.0);
+    let crop_h = crop_size.1.min(base_size.1);
+    let max_x = base_size.0 - crop_w;
+    let max_y = base_size.1 - crop_h;
+    let x = (center_px.0 - f64::from(crop_w) / 2.0)
+        .round()
+        .clamp(0.0, f64::from(max_x)) as u32;
+    let y = (center_px.1 - f64::from(crop_h) / 2.0)
+        .round()
+        .clamp(0.0, f64::from(max_y)) as u32;
+    (x, y, crop_w, crop_h)
+}
+
 /// Hand-rolled filled-circle draw — a single primitive doesn't need a
 /// drawing-library dependency like `imageproc`.
 pub fn draw_marker(image: &mut RgbaImage, center: (f64, f64), radius: f64, color: Rgba<u8>) {
@@ -100,6 +124,10 @@ pub struct CompositeParams {
     pub map_center: (f64, f64),
     pub map_zoom: u32,
     pub map_size: (u32, u32),
+    /// Size of the local-area window panned/cropped out of the base map
+    /// image, centered on the current frame's position (see `crop_window`).
+    /// Backs `--map-size`.
+    pub crop_size: (u32, u32),
 }
 
 fn composite_frame(
@@ -126,13 +154,17 @@ fn composite_frame(
     );
     draw_marker(&mut map, marker_px, MARKER_RADIUS_PX, MARKER_COLOR);
 
+    let (crop_x, crop_y, crop_w, crop_h) =
+        crop_window(map.dimensions(), marker_px, params.crop_size);
+    let cropped = image::imageops::crop_imm(&map, crop_x, crop_y, crop_w, crop_h).to_image();
+
     let (x, y, w, h) = corner_rect(
         frame.dimensions(),
         params.corner,
         params.footprint_percent,
         params.margin_percent,
     );
-    let resized = image::imageops::resize(&map, w, h, image::imageops::FilterType::Lanczos3);
+    let resized = image::imageops::resize(&cropped, w, h, image::imageops::FilterType::Lanczos3);
 
     let mut frame = frame;
     image::imageops::overlay(&mut frame, &resized, i64::from(x), i64::from(y));
@@ -239,6 +271,29 @@ mod tests {
         let portrait = corner_rect((1080, 1920), MapCorner::BottomRight, 0.25, 0.03);
         assert_eq!(landscape.2, portrait.2);
         assert_eq!(landscape.3, portrait.3);
+    }
+
+    #[test]
+    fn crop_window_centers_on_the_point_away_from_edges() {
+        let (x, y, w, h) = crop_window((640, 640), (320.0, 320.0), (200, 200));
+        assert_eq!((w, h), (200, 200));
+        assert_eq!(x, 220); // 320 - 200/2
+        assert_eq!(y, 220);
+    }
+
+    #[test]
+    fn crop_window_clamps_to_the_base_image_near_an_edge() {
+        let (x, y, w, h) = crop_window((640, 640), (5.0, 635.0), (200, 200));
+        assert_eq!((w, h), (200, 200));
+        assert_eq!(x, 0); // would be negative uncentered; clamped to 0
+        assert_eq!(y, 440); // would overflow past 640; clamped to 640-200
+    }
+
+    #[test]
+    fn crop_window_clamps_crop_size_to_the_base_image_size() {
+        let (x, y, w, h) = crop_window((200, 200), (100.0, 100.0), (640, 640));
+        assert_eq!((x, y), (0, 0));
+        assert_eq!((w, h), (200, 200));
     }
 
     #[test]

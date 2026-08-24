@@ -22,7 +22,7 @@ struct Args {
     #[usage(long)]
     to: Option<String>,
 
-    /// Output filestem / video name
+    /// Output filestem / video name (default: "<from>-<to>-<datetime>")
     #[usage(long)]
     output: Option<String>,
 
@@ -98,9 +98,11 @@ struct Args {
     #[usage(long, choices("top-left", "top-right", "bottom-left", "bottom-right"))]
     map_corner: Option<String>,
 
-    /// Fetched inset map's resolution, e.g. "200x200" (also used for the
-    /// marker's pixel math); the on-frame footprint is a separate,
-    /// percentage-based size, not controlled by this flag
+    /// Size of the local-area window panned around the current position,
+    /// e.g. "200x200" (cropped from a larger fixed-resolution base map so
+    /// the inset stays centered on you as the video progresses); the
+    /// on-frame footprint is a separate, percentage-based size, not
+    /// controlled by this flag
     #[usage(long)]
     map_size: Option<String>,
 }
@@ -231,38 +233,80 @@ fn missing_flag_error(flag: &str) -> String {
     )
 }
 
+/// Lowercases `input` and collapses every run of non-alphanumeric characters
+/// into a single `-`, trimming leading/trailing dashes — turns a `--from`/
+/// `--to` value ("lat,lon" or a free-text place) into a filesystem-safe
+/// name segment.
+fn slugify(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut last_was_dash = false;
+    for ch in input.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            last_was_dash = false;
+        } else if !last_was_dash {
+            out.push('-');
+            last_was_dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+/// Default `--output` value when not given explicitly: "<from>-<to>-<datetime>".
+fn default_output_name(from: &str, to: &str) -> String {
+    format!(
+        "{}-{}-{}",
+        slugify(from),
+        slugify(to),
+        chrono::Local::now().format("%Y%m%dT%H%M%S")
+    )
+}
+
 /// Fills in whatever `--interactive` didn't already get from flags, using each
 /// field's default as the suggested value; outside of `--interactive`, applies
 /// those same defaults directly and errors if a required field is still missing.
 fn resolve_args(raw: Args) -> Result<ResolvedArgs, String> {
-    if !raw.interactive {
-        return Ok(ResolvedArgs {
-            from: raw.from.ok_or_else(|| missing_flag_error("--from"))?,
-            to: raw.to.ok_or_else(|| missing_flag_error("--to"))?,
-            output: raw.output.ok_or_else(|| missing_flag_error("--output"))?,
-            output_dir: raw.output_dir,
-            picsize: raw.picsize.unwrap_or_else(|| DEFAULT_PICSIZE.to_string()),
-            fov: raw.fov.unwrap_or(DEFAULT_FOV),
-            pitch: raw.pitch.unwrap_or(DEFAULT_PITCH),
-            radius: raw.radius.unwrap_or(DEFAULT_RADIUS),
-            hop_size: raw.hop_size.unwrap_or(DEFAULT_HOP_SIZE),
-            turn_threshold: raw.turn_threshold.unwrap_or(DEFAULT_TURN_THRESHOLD),
-            fps: raw.fps.unwrap_or(DEFAULT_FPS),
-            concurrency: raw.concurrency.unwrap_or(DEFAULT_CONCURRENCY),
-            yes: raw.yes,
-            dry_run: raw.dry_run,
-            fresh: raw.fresh,
-            avoid_tolls: raw.avoid_tolls,
-            avoid_highways: raw.avoid_highways,
-            avoid_ferries: raw.avoid_ferries,
-            hide_map: raw.hide_map,
-            map_corner: raw
-                .map_corner
-                .unwrap_or_else(|| DEFAULT_MAP_CORNER.to_string()),
-            map_size: raw.map_size.unwrap_or_else(|| DEFAULT_MAP_SIZE.to_string()),
-        });
+    if raw.interactive {
+        resolve_args_interactive(raw)
+    } else {
+        resolve_args_noninteractive(raw)
     }
+}
 
+fn resolve_args_noninteractive(raw: Args) -> Result<ResolvedArgs, String> {
+    let from = raw.from.ok_or_else(|| missing_flag_error("--from"))?;
+    let to = raw.to.ok_or_else(|| missing_flag_error("--to"))?;
+    let output = raw
+        .output
+        .unwrap_or_else(|| default_output_name(&from, &to));
+    Ok(ResolvedArgs {
+        from,
+        to,
+        output,
+        output_dir: raw.output_dir,
+        picsize: raw.picsize.unwrap_or_else(|| DEFAULT_PICSIZE.to_string()),
+        fov: raw.fov.unwrap_or(DEFAULT_FOV),
+        pitch: raw.pitch.unwrap_or(DEFAULT_PITCH),
+        radius: raw.radius.unwrap_or(DEFAULT_RADIUS),
+        hop_size: raw.hop_size.unwrap_or(DEFAULT_HOP_SIZE),
+        turn_threshold: raw.turn_threshold.unwrap_or(DEFAULT_TURN_THRESHOLD),
+        fps: raw.fps.unwrap_or(DEFAULT_FPS),
+        concurrency: raw.concurrency.unwrap_or(DEFAULT_CONCURRENCY),
+        yes: raw.yes,
+        dry_run: raw.dry_run,
+        fresh: raw.fresh,
+        avoid_tolls: raw.avoid_tolls,
+        avoid_highways: raw.avoid_highways,
+        avoid_ferries: raw.avoid_ferries,
+        hide_map: raw.hide_map,
+        map_corner: raw
+            .map_corner
+            .unwrap_or_else(|| DEFAULT_MAP_CORNER.to_string()),
+        map_size: raw.map_size.unwrap_or_else(|| DEFAULT_MAP_SIZE.to_string()),
+    })
+}
+
+fn resolve_args_interactive(raw: Args) -> Result<ResolvedArgs, String> {
     let from = match raw.from {
         Some(v) => v,
         None => prompt_required("Origin (\"lat,lon\" or a place/address)")?,
@@ -273,7 +317,10 @@ fn resolve_args(raw: Args) -> Result<ResolvedArgs, String> {
     };
     let output = match raw.output {
         Some(v) => v,
-        None => prompt_required("Output filestem / video name")?,
+        None => prompt_with_default(
+            "Output filestem / video name",
+            &default_output_name(&from, &to),
+        )?,
     };
     let output_dir = match raw.output_dir {
         Some(v) => Some(v),
@@ -337,7 +384,7 @@ fn resolve_args(raw: Args) -> Result<ResolvedArgs, String> {
         map_size: match raw.map_size {
             Some(v) => v,
             None => prompt_with_default(
-                "Fetched inset map resolution (e.g. 200x200)",
+                "Inset map's local-area window size, panned around your position (e.g. 200x200)",
                 DEFAULT_MAP_SIZE,
             )?,
         },
@@ -377,6 +424,7 @@ struct OutputPaths {
     lineup_dir: std::path::PathBuf,
     composited_dir: std::path::PathBuf,
     video_path: std::path::PathBuf,
+    preview_image_path: std::path::PathBuf,
 }
 
 /// See the plan's "Output layout": everything for one run lives under a
@@ -389,6 +437,7 @@ fn output_paths(dir: &std::path::Path, name: &str) -> OutputPaths {
         lineup_dir: dir.join("lineup"),
         composited_dir: dir.join("composited"),
         video_path: dir.join(format!("{name}.mp4")),
+        preview_image_path: dir.join(format!("{name}.jpg")),
     }
 }
 
@@ -411,12 +460,14 @@ fn estimate_download_cost_usd(image_count: usize) -> f64 {
 }
 
 /// The one Static Maps image fetched per run, plus what's needed to place
-/// the per-frame marker on it (see `geo::lat_lon_to_pixel`).
+/// the per-frame marker on it (see `geo::lat_lon_to_pixel`) and pan/crop a
+/// local-area window around it (see `compositing::crop_window`).
 struct MapState {
     path: std::path::PathBuf,
     center: (f64, f64),
     zoom: u32,
     size: (u32, u32),
+    crop_size: (u32, u32),
 }
 
 fn validate_api_keys(streetview: Option<&str>, directions: Option<&str>) -> Result<(), String> {
@@ -642,12 +693,20 @@ async fn run() -> Result<(), String> {
     let map_state: Option<MapState> = if args.hide_map {
         None
     } else {
-        let map_size = maps::parse_size(&args.map_size).map_err(|e| e.to_string())?;
+        let requested_crop = maps::parse_size(&args.map_size).map_err(|e| e.to_string())?;
+        let crop_size = (
+            requested_crop.0.min(maps::BASE_MAP_SIZE.0),
+            requested_crop.1.min(maps::BASE_MAP_SIZE.1),
+        );
         let route_points: Vec<(f64, f64)> = processed.iter().map(|r| (r.lat, r.lon)).collect();
-        let (center, zoom) = geo::bbox_center_zoom(&route_points, map_size.0, map_size.1);
-        let cache_path = output_dir.join(format!("map_{}.png", args.map_size));
+        let (center, zoom) =
+            geo::bbox_center_zoom(&route_points, maps::BASE_MAP_SIZE.0, maps::BASE_MAP_SIZE.1);
+        // Base map size is fixed (see maps::BASE_MAP_SIZE), so the cached
+        // image's content depends only on the route, not on --map-size —
+        // no need to invalidate the cache when --map-size changes.
+        let cache_path = output_dir.join("map.png");
         let request = maps::StaticMapRequest {
-            size: map_size,
+            size: maps::BASE_MAP_SIZE,
             zoom,
             center,
             points: &route_points,
@@ -659,7 +718,8 @@ async fn run() -> Result<(), String> {
                 path,
                 center,
                 zoom,
-                size: map_size,
+                size: maps::BASE_MAP_SIZE,
+                crop_size,
             }),
             Err(maps::MapsError::Auth(_)) => {
                 eprintln!(
@@ -733,7 +793,7 @@ async fn run() -> Result<(), String> {
     .await
     .map_err(|e| e.to_string())??;
 
-    let video_source_dir = if let Some(map_state) = &map_state {
+    let (video_source_dir, final_frame_paths) = if let Some(map_state) = &map_state {
         let corner = compositing::MapCorner::parse(&args.map_corner)?;
         let composite_params = compositing::CompositeParams {
             corner,
@@ -742,6 +802,7 @@ async fn run() -> Result<(), String> {
             map_center: map_state.center,
             map_zoom: map_state.zoom,
             map_size: map_state.size,
+            crop_size: map_state.crop_size,
         };
         let frames: Vec<(usize, std::path::PathBuf, (f64, f64))> = frame_paths
             .into_iter()
@@ -749,7 +810,7 @@ async fn run() -> Result<(), String> {
             .enumerate()
             .map(|(i, (path, point))| (i, path, point))
             .collect();
-        compositing::composite_all(
+        let composited_paths = compositing::composite_all(
             frames,
             map_state.path.clone(),
             paths.composited_dir.clone(),
@@ -757,9 +818,9 @@ async fn run() -> Result<(), String> {
             args.concurrency,
         )
         .await?;
-        paths.composited_dir.clone()
+        (paths.composited_dir.clone(), composited_paths)
     } else {
-        paths.lineup_dir.clone()
+        (paths.lineup_dir.clone(), frame_paths)
     };
 
     video::encode_video(
@@ -771,8 +832,19 @@ async fn run() -> Result<(), String> {
     )
     .await
     .map_err(|e| e.to_string())?;
-
     println!("Video written to {}", paths.video_path.display());
+
+    // A representative still (the middle frame of the final output, after
+    // any map compositing) saved alongside the video under the same name,
+    // for a quick preview without opening the video itself.
+    if let Some(preview_source) = final_frame_paths.get(final_frame_paths.len() / 2) {
+        std::fs::copy(preview_source, &paths.preview_image_path).map_err(|e| e.to_string())?;
+        println!(
+            "Preview image written to {}",
+            paths.preview_image_path.display()
+        );
+    }
+
     Ok(())
 }
 
@@ -858,6 +930,30 @@ mod tests {
         assert_eq!(paths.lineup_dir, dir.join("lineup"));
         assert_eq!(paths.composited_dir, dir.join("composited"));
         assert_eq!(paths.video_path, dir.join("joshua_tree.mp4"));
+        assert_eq!(paths.preview_image_path, dir.join("joshua_tree.jpg"));
+    }
+
+    #[test]
+    fn slugify_lowercases_and_collapses_punctuation() {
+        assert_eq!(super::slugify("48.8611,2.3358"), "48-8611-2-3358");
+        assert_eq!(
+            super::slugify("Marseille Provence Airport"),
+            "marseille-provence-airport"
+        );
+    }
+
+    #[test]
+    fn slugify_trims_leading_and_trailing_dashes() {
+        assert_eq!(
+            super::slugify("  -leading and trailing- "),
+            "leading-and-trailing"
+        );
+    }
+
+    #[test]
+    fn default_output_name_includes_both_slugified_endpoints() {
+        let name = super::default_output_name("48.8611,2.3358", "Simiane-la-Rotonde");
+        assert!(name.starts_with("48-8611-2-3358-simiane-la-rotonde-"));
     }
 
     #[test]

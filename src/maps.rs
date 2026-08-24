@@ -13,6 +13,15 @@ const STATIC_MAPS_URL_LIMIT: usize = 8192;
 pub const DEFAULT_PATH_COLOR: &str = "0x0000ffff";
 pub const DEFAULT_PATH_WEIGHT: u32 = 3;
 
+/// The one Static Maps request this run makes is always fetched at this
+/// fixed resolution — 640x640, the free/standard-tier maximum at `scale=1`
+/// — regardless of `--map-size`. `--map-size` instead sets the size of the
+/// local-area window panned/cropped out of this base image, centered on the
+/// current position, per frame (see `compositing::crop_window`). Fetching
+/// bigger than the crop needs gives that pan/crop room to move while
+/// keeping local detail sharp, without needing more than the one API call.
+pub const BASE_MAP_SIZE: (u32, u32) = (640, 640);
+
 /// Everything needed to draw the route path on the one Static Maps request
 /// this run makes — grouped so the request-building functions below don't
 /// balloon into a long positional argument list. All fields are `Copy` so
