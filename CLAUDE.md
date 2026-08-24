@@ -43,3 +43,5 @@ skills reference them too, but the rubric and vocabulary live here, not in the s
 @.claude/instructions/context-mode.md
 
 @.claude/instructions/qmd.md
+
+@.claude/instructions/plain-english.md
