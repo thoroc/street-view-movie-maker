@@ -765,7 +765,10 @@ async fn run() -> Result<(), String> {
         processed[i].downloaded = true;
         image_paths.push(path);
     }
-    let all_points: Vec<(f64, f64)> = processed.iter().map(|r| (r.lat, r.lon)).collect();
+    let all_points: Vec<(f64, f64, f64)> = processed
+        .iter()
+        .map(|r| (r.lat, r.lon, r.heading))
+        .collect();
     itinerary::save_to(
         &paths.itinerary_path,
         &itinerary::ItineraryFile {
@@ -787,7 +790,7 @@ async fn run() -> Result<(), String> {
             kept.iter().map(|&i| image_paths[i].clone()).collect();
         let renumbered = lineup::renumber_sequentially(&kept_paths, &lineup_dir, "frame")
             .map_err(|e| e.to_string())?;
-        let kept_points: Vec<(f64, f64)> = kept.iter().map(|&i| all_points[i]).collect();
+        let kept_points: Vec<(f64, f64, f64)> = kept.iter().map(|&i| all_points[i]).collect();
         Ok((renumbered, kept_points))
     })
     .await
@@ -804,7 +807,7 @@ async fn run() -> Result<(), String> {
             map_size: map_state.size,
             crop_size: map_state.crop_size,
         };
-        let frames: Vec<(usize, std::path::PathBuf, (f64, f64))> = frame_paths
+        let frames: Vec<(usize, std::path::PathBuf, (f64, f64, f64))> = frame_paths
             .into_iter()
             .zip(frame_points)
             .enumerate()

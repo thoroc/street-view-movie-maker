@@ -33,6 +33,12 @@ pub const INSET_MARGIN_PERCENT: f64 = 0.03;
 const MARKER_RADIUS_PX: f64 = 6.0;
 const MARKER_COLOR: Rgba<u8> = Rgba([230, 30, 30, 255]);
 
+/// Fill color for the corners exposed when rotating the pre-rotation crop
+/// (see `safe_rotation_source_size`) — only visible if that crop got
+/// clamped smaller than the ideal safe size near the fetched map's edges.
+/// A light neutral gray, close to Google's own basemap background.
+const ROTATION_FILL_COLOR: Rgba<u8> = Rgba([225, 225, 220, 255]);
+
 /// Computes the inset's on-frame `(x, y, width, height)` rectangle for a
 /// given frame size, corner, footprint, and margin.
 pub fn corner_rect(
@@ -78,6 +84,17 @@ fn crop_window(
         .round()
         .clamp(0.0, f64::from(max_y)) as u32;
     (x, y, crop_w, crop_h)
+}
+
+/// The smallest square side that, once rotated by any angle about its own
+/// center, still fully covers a `crop_size` rectangle cropped from that same
+/// center — a rotated shape's farthest-from-center point (here, `crop_size`'s
+/// corner) stays the same distance from center regardless of rotation angle,
+/// so a source square with at least that diagonal as its side guarantees no
+/// exposed (fill-color) corners in the final crop after rotation.
+fn safe_rotation_source_size(crop_size: (u32, u32)) -> u32 {
+    let diagonal = (f64::from(crop_size.0).powi(2) + f64::from(crop_size.1).powi(2)).sqrt();
+    diagonal.ceil() as u32
 }
 
 /// Hand-rolled filled-circle draw — a single primitive doesn't need a
@@ -133,10 +150,11 @@ pub struct CompositeParams {
 fn composite_frame(
     frame_path: &Path,
     base_map: &RgbaImage,
-    point: (f64, f64),
+    point: (f64, f64, f64),
     params: &CompositeParams,
     dest_path: &Path,
 ) -> Result<(), CompositingError> {
+    let (lat, lon, heading) = point;
     let frame = image::open(frame_path)
         .map_err(|source| CompositingError::Decode {
             path: frame_path.display().to_string(),
@@ -146,17 +164,42 @@ fn composite_frame(
 
     let mut map = base_map.clone();
     let marker_px = crate::geo::lat_lon_to_pixel(
-        point.0,
-        point.1,
+        lat,
+        lon,
         params.map_center,
         params.map_zoom,
         params.map_size,
     );
     draw_marker(&mut map, marker_px, MARKER_RADIUS_PX, MARKER_COLOR);
 
+    // Crop a source window big enough that rotating it about its center
+    // can't expose fill-colored corners in the final crop_size crop below,
+    // then rotate it so the current direction of travel points to the top
+    // of the inset ("track-up", like a car GPS display) instead of the map
+    // staying fixed north-up.
+    let source_side = safe_rotation_source_size(params.crop_size)
+        .min(map.width())
+        .min(map.height());
+    let (src_x, src_y, src_w, src_h) =
+        crop_window(map.dimensions(), marker_px, (source_side, source_side));
+    let source = image::imageops::crop_imm(&map, src_x, src_y, src_w, src_h).to_image();
+    let rotated = imageproc::geometric_transformations::rotate_about_center(
+        &source,
+        (heading as f32).to_radians(),
+        imageproc::geometric_transformations::Interpolation::Bilinear,
+        ROTATION_FILL_COLOR,
+    );
+
+    // Rotating about the source crop's center keeps the marker (which was
+    // centered in that crop, per `crop_window`) at the rotated image's
+    // center too, so the final crop just needs to be centered on it.
+    let rotated_center = (
+        f64::from(rotated.width()) / 2.0,
+        f64::from(rotated.height()) / 2.0,
+    );
     let (crop_x, crop_y, crop_w, crop_h) =
-        crop_window(map.dimensions(), marker_px, params.crop_size);
-    let cropped = image::imageops::crop_imm(&map, crop_x, crop_y, crop_w, crop_h).to_image();
+        crop_window(rotated.dimensions(), rotated_center, params.crop_size);
+    let cropped = image::imageops::crop_imm(&rotated, crop_x, crop_y, crop_w, crop_h).to_image();
 
     let (x, y, w, h) = corner_rect(
         frame.dimensions(),
@@ -185,7 +228,7 @@ fn composite_frame(
 /// the existing `lineup/` convention, since compositing is local-only (no
 /// API spend to save by skipping it).
 pub async fn composite_all(
-    frames: Vec<(usize, PathBuf, (f64, f64))>,
+    frames: Vec<(usize, PathBuf, (f64, f64, f64))>,
     base_map_path: PathBuf,
     dest_dir: PathBuf,
     params: CompositeParams,
@@ -294,6 +337,19 @@ mod tests {
         let (x, y, w, h) = crop_window((200, 200), (100.0, 100.0), (640, 640));
         assert_eq!((x, y), (0, 0));
         assert_eq!((w, h), (200, 200));
+    }
+
+    #[test]
+    fn safe_rotation_source_size_is_the_crop_diagonal() {
+        // 200x200's diagonal is 200*sqrt(2) ~= 282.84, rounded up.
+        assert_eq!(safe_rotation_source_size((200, 200)), 283);
+    }
+
+    #[test]
+    fn safe_rotation_source_size_handles_non_square_crops() {
+        let side = safe_rotation_source_size((100, 200));
+        let expected = (100f64.powi(2) + 200f64.powi(2)).sqrt().ceil() as u32;
+        assert_eq!(side, expected);
     }
 
     #[test]

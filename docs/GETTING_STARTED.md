@@ -100,7 +100,7 @@ Under `--interactive`, you're prompted for each (y/N) alongside the other tuning
 
 ### Inset route map: `--hide-map`/`--map-corner`/`--map-size`
 
-Every run composites a small inset map into a frame corner, centered on your current position and panning to stay centered as the video progresses. It's on by default:
+Every run composites a small inset map into a frame corner, centered on your current position and rotated so your direction of travel always points to the top ("track-up", like a car GPS display, not fixed north-up). It's on by default:
 
 ```sh
 fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde" --map-corner top-left
@@ -110,9 +110,9 @@ fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Si
 - `--map-corner` picks which corner it sits in: `top-left`, `top-right`, `bottom-left`, or `bottom-right` (default).
 - `--map-size` (default `200x200`) sets the size of the local-area window panned around your position, not the on-frame footprint (a fixed percentage of the frame's shorter dimension, so it stays proportionally consistent across different `--picsize` aspect ratios) and not the raw Maps Static request size (see below).
 
-Only one Maps Static API call happens per run, regardless of frame count: the CLI always fetches one larger base map (640x640, the API's free-tier maximum) covering the whole route, cached at `<output-dir>/map.png`. Per frame, it draws the marker on that base image at its true position, then crops a `--map-size` window centered on the marker and pastes that into the corner — so the inset stays centered on you, panning across the cached image, with no extra API calls. If the project behind `DIRECTIONS_API_KEY` doesn't have the Maps Static API enabled, the run doesn't fail — it prints a one-time message and finishes the video without the inset instead.
+Only one Maps Static API call happens per run, regardless of frame count: the CLI always fetches one larger base map (640x640, the API's free-tier maximum) covering the whole route, cached at `<output-dir>/map.png`. Per frame, it draws the marker on that base image at its true position, crops a window around the marker large enough to rotate without exposing empty corners, rotates that so the current heading points up, then crops the final `--map-size` window from its center and pastes that into the corner — so the inset stays centered on you and oriented to your direction of travel, panning/rotating across the one cached image, with no extra API calls. If the project behind `DIRECTIONS_API_KEY` doesn't have the Maps Static API enabled, the run doesn't fail — it prints a one-time message and finishes the video without the inset instead.
 
-Here's a frame from the same demo route as above, with the inset showing a marker centered in a zoomed-in local view around the current position:
+Here's a frame from the same demo route as above, with the inset showing a marker centered in a zoomed-in, track-up local view around the current position:
 
 ![A frame from an svmm output video, with a small inset map in the bottom-right corner showing the route and a position marker](media/demo-inset-map-frame.jpg)
 
