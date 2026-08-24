@@ -34,23 +34,10 @@ fn build_url(
     ];
     let query_string = query
         .iter()
-        .map(|(k, v)| format!("{k}={}", urlencode(v)))
+        .map(|(k, v)| format!("{k}={}", crate::net::urlencode(v)))
         .collect::<Vec<_>>()
         .join("&");
     format!("{base}?{query_string}")
-}
-
-fn urlencode(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char);
-            }
-            _ => out.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    out
 }
 
 pub fn build_metadata_url(
@@ -157,6 +144,17 @@ enum FetchError {
 }
 
 async fn fetch_with_retry(client: &reqwest::Client, url: &str) -> Result<Vec<u8>, StreetviewError> {
+    let cache_dir = crate::net::http_cache_dir();
+    crate::net::cached_fetch(url, cache_dir.as_deref(), || {
+        fetch_with_retry_live(client, url)
+    })
+    .await
+}
+
+async fn fetch_with_retry_live(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<Vec<u8>, StreetviewError> {
     let result = crate::net::with_retry(
         MAX_ATTEMPTS,
         |e: &FetchError| matches!(e, FetchError::Transient(_)),

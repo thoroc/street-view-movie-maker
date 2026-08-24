@@ -4,19 +4,30 @@ This covers getting Google API credentials, storing them safely, running the CLI
 
 ## 1. Get Google API credentials
 
-The CLI calls two Google Maps Platform APIs directly, and relies on a third indirectly:
+The CLI calls three Google Maps Platform APIs directly, and relies on a fourth indirectly:
 
 - **Directions API** — turns `--from`/`--to` into a route.
 - **Street View Static API** — downloads the actual frames.
+- **Maps Static API** — fetches the one inset route-map image shown in a frame corner by default (see [Inset route map](#inset-route-map---hide-map--map-corner--map-size) below); skip enabling it if you always pass `--hide-map`.
 - **Geocoding API** (indirect) — when `--from`/`--to` is a place name rather than `"lat,lon"`, the Directions API resolves it internally using Geocoding. You don't call it yourself, but it must be enabled on your project or place-name resolution fails.
 
 Setup:
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create or select a project.
-2. In **APIs & Services → Library**, enable **Directions API**, **Street View Static API**, and **Geocoding API**.
+2. In **APIs & Services → Library**, enable **Directions API**, **Street View Static API**, **Maps Static API**, and **Geocoding API**.
 3. **Enable billing** on the project — Street View Static API requires it even though usage is often free at low volume (see [Cost](#4-cost) below).
 4. In **APIs & Services → Credentials**, create an API key. One key works across all three APIs. Optionally restrict it (API restrictions to just those three, and/or application restrictions) since it'll sit in your local secrets store.
 5. Official docs, if you want the detail: [Street View API key setup](https://developers.google.com/maps/documentation/streetview/get-api-key), [Directions API key setup](https://developers.google.com/maps/documentation/directions/get-api-key).
+
+### Adding a new Google API to an existing key later
+
+A future feature may need another Google Maps Platform API added to a key you already have (this happened when the inset-map feature above added a dependency on Maps Static API). Two separate gates have to pass, and it's easy to fix only one of them:
+
+1. **Find which project your key belongs to.** Go to [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials). The project picker dropdown at the top of the page shows the currently-selected project — a key only shows up on this page while that key's project is selected, so you may need to switch projects (via that same dropdown) to find it. To confirm you've found the right key, reveal its value locally with `fnox get <KEY_NAME>` and compare against "Show key" next to each entry on this page.
+2. **Enable the API on that project.** With the right project still selected, go to [console.cloud.google.com/apis/library](https://console.cloud.google.com/apis/library), search for the API by name, and click it. A blue **ENABLE** button means it isn't enabled yet — click it. A greyed-out **MANAGE** button means it already is.
+3. **Check the key's own API restrictions.** Back on the Credentials page, click the key's name (not the eye icon) to open its settings. Under **"API restrictions"**: if it says "Don't restrict key", skip this step. If it says "Restrict key" with a checklist below, the new API needs its checkbox ticked too — a key can be scoped to only the APIs it originally needed, and enabling an API on the project does **not** update that list automatically. Tick it and click **Save**.
+
+Both gates apply independently: an API enabled on the project but not checked in the key's restriction list still fails, and vice versa.
 
 ## 2. Store the keys with fnox
 
@@ -36,18 +47,22 @@ Run the CLI with `fnox exec -- ...` so the keys are loaded as env vars for that 
 ## 3. Run it
 
 ```sh
-fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde" --output my_trip
+fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde"
 ```
 
 `--from`/`--to` accept `"lat,lon"` or a free-text place name — both go through the same resolution path. Run `cargo run -- --help` for the full flag list. One gotcha: pass negative numeric values with `=`, e.g. `--pitch=-30`, not `--pitch -30` — a bare `-30` after a space is read as an unrecognized flag, not this flag's value.
 
 Every run prints the resolved route, the number of images it will download, and an estimated cost, then stops for confirmation (or exits immediately with `--dry-run`) before anything is downloaded. Nothing is downloaded without that gate unless you pass `--yes`.
 
+`--output` (the filestem for the video and preview image, and the default output directory name) is optional — pass it to name a run yourself, or omit it and the CLI computes `<from>-<to>-<datetime>` from the values you gave `--from`/`--to` and the current local time (e.g. `48-8611-2-3358-simiane-la-rotonde-20260824T090043`).
+
 ### What to expect
 
 Here's a single frame from a real run over a short, cheap demo route (Rue de Rivoli, by the Louvre), which resolved the route, downloaded 342 Street View frames along it, and encoded them into a video:
 
 ![A frame from an svmm output video, showing the Louvre courtyard from street level](media/demo-baseline-run-frame.png)
+
+Alongside the video, every run also saves one representative still (the middle frame of the final output) as a preview image next to it — same filestem, `.jpg` extension — so you can glance at the result without opening the video.
 
 Reproduce it with `mise run demo`, or directly:
 
@@ -71,7 +86,7 @@ fnox exec -- cargo run --release -- --interactive
 fnox exec -- cargo run --release -- --interactive --from "Marseille Provence Airport" --to "Simiane-la-Rotonde"
 ```
 
-Here `--from`/`--to` are used as given, and you're only prompted for `--output` and the remaining tuning flags. Without `--interactive`, any of `--from`/`--to`/`--output` left unset causes the CLI to error out and suggest `--interactive` instead of guessing a value for you.
+Here `--from`/`--to` are used as given, and you're only prompted for `--output` (showing the computed `<from>-<to>-<datetime>` default, editable or acceptable as-is) and the remaining tuning flags. Without `--interactive`, `--from`/`--to` left unset cause the CLI to error out and suggest `--interactive` instead of guessing a value for you; `--output` is optional either way (see [Run it](#3-run-it) above).
 
 ### Steering the route: `--avoid-tolls`/`--avoid-highways`/`--avoid-ferries`
 
@@ -83,6 +98,24 @@ fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Si
 
 Under `--interactive`, you're prompted for each (y/N) alongside the other tuning values.
 
+### Inset route map: `--hide-map`/`--map-corner`/`--map-size`
+
+Every run composites a small inset map into a frame corner, centered on your current position and rotated so your direction of travel always points to the top ("track-up", like a car GPS display, not fixed north-up). It's on by default:
+
+```sh
+fnox exec -- cargo run --release -- --from "Marseille Provence Airport" --to "Simiane-la-Rotonde" --map-corner top-left
+```
+
+- `--hide-map` turns it off entirely (no Maps Static API call, no cost line, no `composited/` output directory — the video is built straight from the downloaded frames).
+- `--map-corner` picks which corner it sits in: `top-left`, `top-right`, `bottom-left`, or `bottom-right` (default).
+- `--map-size` (default `200x200`) sets the size of the local-area window panned around your position, not the on-frame footprint (a fixed percentage of the frame's shorter dimension, so it stays proportionally consistent across different `--picsize` aspect ratios) and not the raw Maps Static request size (see below).
+
+Only one Maps Static API call happens per run, regardless of frame count: the CLI always fetches one larger base map (640x640, the API's free-tier maximum) covering the whole route, cached at `<output-dir>/map.png`. Per frame, it draws the marker on that base image at its true position, crops a window around the marker large enough to rotate without exposing empty corners, rotates that so the current heading points up, then crops the final `--map-size` window from its center and pastes that into the corner — so the inset stays centered on you and oriented to your direction of travel, panning/rotating across the one cached image, with no extra API calls. If the project behind `DIRECTIONS_API_KEY` doesn't have the Maps Static API enabled, the run doesn't fail — it prints a one-time message and finishes the video without the inset instead.
+
+Here's a frame from the same demo route as above, with the inset showing a marker centered in a zoomed-in, track-up local view around the current position:
+
+![A frame from an svmm output video, with a small inset map in the bottom-right corner showing the route and a position marker](media/demo-inset-map-frame.jpg)
+
 ## 4. Cost
 
 Prices below are from Google's published rate card (developers.google.com/maps/billing-and-pricing/pricing, checked 2026-08-23) — verify against the live console before relying on them at volume, since Google's pricing changes.
@@ -92,6 +125,7 @@ Prices below are from Google's published rate card (developers.google.com/maps/b
 | Street View **metadata** probe (checking if a panorama exists at a point) | Free, unlimited | n/a |
 | Street View **Static** image (the actual downloaded frame) | $7.00 / 1,000 | First 10,000 |
 | Directions (one call per run) | $5.00 / 1,000 | First 10,000 |
+| Maps Static (one call per run, for the inset map — skipped entirely with `--hide-map`) | $2.00 / 1,000 | First 10,000 |
 
 The CLI can't see how much of your monthly free allowance you've already used, so the cost line it prints is a **worst-case estimate assuming none remains** — the real charge may be $0. Use `--dry-run` to see the resolved route, image count, and cost estimate without downloading anything (note: the one Directions call still happens and is billed, negligibly, under `--dry-run` too).
 

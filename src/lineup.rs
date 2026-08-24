@@ -18,14 +18,17 @@ pub fn hash_file(path: &Path) -> std::io::Result<String> {
 /// *kept* file — mirrors `prune_repeated_images_from_list`'s adjacent `diff`
 /// comparison, not a global dedupe. Catches near-duplicate consecutive frames
 /// that `itinerary::dedupe_by_pano_id` doesn't (different pano_id, visually
-/// identical image).
-pub fn dedupe_by_content(paths: &[PathBuf]) -> std::io::Result<Vec<PathBuf>> {
-    let mut kept: Vec<PathBuf> = Vec::with_capacity(paths.len());
+/// identical image). Returns *indices* into `paths` rather than the paths
+/// themselves, so a caller can carry other per-frame data (e.g. the route
+/// point a frame came from) through the same dedupe decision — a plain
+/// `Vec<PathBuf>` would lose that correspondence.
+pub fn dedupe_by_content_indices(paths: &[PathBuf]) -> std::io::Result<Vec<usize>> {
+    let mut kept: Vec<usize> = Vec::with_capacity(paths.len());
     let mut last_hash: Option<String> = None;
-    for path in paths {
+    for (i, path) in paths.iter().enumerate() {
         let hash = hash_file(path)?;
         if last_hash.as_deref() != Some(hash.as_str()) {
-            kept.push(path.clone());
+            kept.push(i);
         }
         last_hash = Some(hash);
     }
@@ -90,33 +93,33 @@ mod tests {
     }
 
     #[test]
-    fn dedupe_by_content_drops_consecutive_duplicates() {
+    fn dedupe_by_content_indices_drops_consecutive_duplicates() {
         let dir = temp_dir();
         let a = write_file(&dir, "0.jpg", b"same");
         let b = write_file(&dir, "1.jpg", b"same");
         let c = write_file(&dir, "2.jpg", b"different");
-        let kept = dedupe_by_content(&[a.clone(), b, c.clone()]).unwrap();
-        assert_eq!(kept, vec![a, c]);
+        let indices = dedupe_by_content_indices(&[a, b, c]).unwrap();
+        assert_eq!(indices, vec![0, 2]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn dedupe_by_content_keeps_non_consecutive_repeats() {
+    fn dedupe_by_content_indices_keeps_non_consecutive_repeats() {
         let dir = temp_dir();
         let a = write_file(&dir, "0.jpg", b"same");
         let b = write_file(&dir, "1.jpg", b"different");
         let c = write_file(&dir, "2.jpg", b"same");
-        let kept = dedupe_by_content(&[a.clone(), b.clone(), c.clone()]).unwrap();
-        assert_eq!(kept, vec![a, b, c]);
+        let indices = dedupe_by_content_indices(&[a, b, c]).unwrap();
+        assert_eq!(indices, vec![0, 1, 2]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn dedupe_by_content_keeps_a_single_file_unchanged() {
+    fn dedupe_by_content_indices_keeps_a_single_file_unchanged() {
         let dir = temp_dir();
         let a = write_file(&dir, "0.jpg", b"only");
-        let kept = dedupe_by_content(&[a.clone()]).unwrap();
-        assert_eq!(kept, vec![a]);
+        let indices = dedupe_by_content_indices(&[a]).unwrap();
+        assert_eq!(indices, vec![0]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -142,7 +145,7 @@ mod tests {
         let src_dir = temp_dir();
         let dest_dir = temp_dir();
         let a = write_file(&src_dir, "orig.jpg", b"content");
-        renumber_sequentially(&[a.clone()], &dest_dir, "frame").unwrap();
+        renumber_sequentially(std::slice::from_ref(&a), &dest_dir, "frame").unwrap();
         assert!(a.exists());
         let _ = std::fs::remove_dir_all(&src_dir);
         let _ = std::fs::remove_dir_all(&dest_dir);

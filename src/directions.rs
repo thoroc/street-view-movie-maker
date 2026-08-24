@@ -182,6 +182,15 @@ enum FetchError {
     Fatal(String),
 }
 
+fn build_directions_url(params: &[(&'static str, String)]) -> String {
+    let query_string = params
+        .iter()
+        .map(|(k, v)| format!("{k}={}", crate::net::urlencode(v)))
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("{DIRECTIONS_ENDPOINT}?{query_string}")
+}
+
 /// Fetches and resolves a route from the Directions API, retrying transient
 /// failures (timeouts, connect errors, 5xx, 429) with exponential backoff via
 /// `net::with_retry`. Not unit tested here — exercised by the end-to-end test
@@ -196,37 +205,47 @@ pub async fn fetch_directions(
     avoid: &[AvoidFeature],
 ) -> Result<ResolvedRoute, DirectionsError> {
     let params = build_directions_params(origin, destination, api_key, avoid);
+    let url = build_directions_url(&params);
 
+    let cache_dir = crate::net::http_cache_dir();
+    let body_bytes = crate::net::cached_fetch(&url, cache_dir.as_deref(), || {
+        fetch_directions_body(client, &url)
+    })
+    .await?;
+    let body = String::from_utf8(body_bytes).map_err(|e| DirectionsError::Parse(e.to_string()))?;
+    parse_directions_response(&body)
+}
+
+async fn fetch_directions_body(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<Vec<u8>, DirectionsError> {
     let result = crate::net::with_retry(
         MAX_ATTEMPTS,
         |e: &FetchError| matches!(e, FetchError::Transient(_)),
         || async {
-            let response = client
-                .get(DIRECTIONS_ENDPOINT)
-                .query(&params)
-                .send()
-                .await
-                .map_err(|e| {
-                    if e.is_timeout() || e.is_connect() {
-                        FetchError::Transient(e.to_string())
-                    } else {
-                        FetchError::Fatal(e.to_string())
-                    }
-                })?;
+            let response = client.get(url).send().await.map_err(|e| {
+                if e.is_timeout() || e.is_connect() {
+                    FetchError::Transient(e.to_string())
+                } else {
+                    FetchError::Fatal(e.to_string())
+                }
+            })?;
             let status = response.status();
             if status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
                 return Err(FetchError::Transient(format!("HTTP {status}")));
             }
             response
-                .text()
+                .bytes()
                 .await
+                .map(|b| b.to_vec())
                 .map_err(|e| FetchError::Fatal(e.to_string()))
         },
     )
     .await;
 
     match result {
-        Ok(body) => parse_directions_response(&body),
+        Ok(bytes) => Ok(bytes),
         Err((attempts, FetchError::Transient(message) | FetchError::Fatal(message))) => {
             Err(DirectionsError::Network { attempts, message })
         }
