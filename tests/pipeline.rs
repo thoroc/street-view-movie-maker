@@ -19,11 +19,20 @@ fn temp_output_dir() -> PathBuf {
     dir
 }
 
+/// Raw Google API responses hit by the ignored tests below get cached here
+/// (see the "Cache raw Google API responses" rule in `.claude/RULES.md`) —
+/// gitignored, shared across runs of this test binary, so re-running
+/// `cargo test -- --ignored` while iterating doesn't repeatedly bill the
+/// same Directions/Street View/Maps Static calls. Delete this directory to
+/// force a fresh check against the live APIs.
+const HTTP_CACHE_DIR: &str = ".tmp/http_cache_fixtures";
+
 fn run_binary(args: &[&str], api_keys: (&str, &str)) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_svmm"))
         .args(args)
         .env("STREETVIEW_API_KEY", api_keys.0)
         .env("DIRECTIONS_API_KEY", api_keys.1)
+        .env("SVMM_HTTP_CACHE_DIR", HTTP_CACHE_DIR)
         .output()
         .expect("failed to run svmm binary")
 }

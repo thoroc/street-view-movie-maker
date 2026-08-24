@@ -195,6 +195,14 @@ enum FetchError {
 }
 
 async fn fetch_map_bytes(client: &reqwest::Client, url: &str) -> Result<Vec<u8>, MapsError> {
+    let cache_dir = crate::net::http_cache_dir();
+    crate::net::cached_fetch(url, cache_dir.as_deref(), || {
+        fetch_map_bytes_live(client, url)
+    })
+    .await
+}
+
+async fn fetch_map_bytes_live(client: &reqwest::Client, url: &str) -> Result<Vec<u8>, MapsError> {
     let result = crate::net::with_retry(
         MAX_ATTEMPTS,
         |e: &FetchError| matches!(e, FetchError::Transient(_)),
