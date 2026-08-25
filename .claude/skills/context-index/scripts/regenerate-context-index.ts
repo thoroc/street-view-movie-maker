@@ -219,6 +219,62 @@ const buildIndexLines = (entries: Entry[]): string[] => {
   return lines
 }
 
+// repo-scouting's log.jsonl (and any future structured, non-markdown .context/
+// log of this shape) is invisible to scanContextFiles above by design -- it's
+// not frontmatter'd markdown. Left unindexed, index.yaml gives no signal that
+// it exists at all, so an agent surveying .context/ via the index alone would
+// never discover it. This surfaces a one-line summary (entry count + verdict
+// breakdown) without attempting to index individual log entries as if they
+// were context-file entries -- the log stays a log, not a second index.
+type JsonlLogSummary = {
+  path: string
+  entries: number
+  verdictCounts: Record<string, number>
+}
+
+const summarizeJsonlLog = (
+  root: string,
+  relPath: string,
+  verdictField: string,
+): JsonlLogSummary | null => {
+  const fullPath = `${root}/${relPath}`
+  if (!existsSync(fullPath)) return null
+  const lines = readFileSync(fullPath, 'utf8')
+    .split('\n')
+    .filter((l) => l.trim().length > 0)
+  const verdictCounts: Record<string, number> = {}
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line) as Record<string, unknown>
+      const verdict = entry[verdictField]
+      if (typeof verdict === 'string') {
+        verdictCounts[verdict] = (verdictCounts[verdict] ?? 0) + 1
+      }
+    } catch {
+      // A malformed line is scripts/validate-repo-scouting-log.sh's job to
+      // catch and fail loudly on -- this summary silently skips it rather
+      // than crashing index regeneration over a log-content problem.
+    }
+  }
+  return { path: relPath, entries: lines.length, verdictCounts }
+}
+
+const buildJsonlLogLines = (summaries: JsonlLogSummary[]): string[] => {
+  if (summaries.length === 0) return []
+  const lines = [`# ── Structured Logs (${summaries.length}) ──`, 'logs:']
+  for (const s of summaries) {
+    lines.push(`  - path: ${emitScalar(s.path)}`)
+    lines.push(`    entries: ${s.entries}`)
+    const verdictKeys = Object.keys(s.verdictCounts).sort()
+    if (verdictKeys.length > 0) {
+      lines.push('    verdicts:')
+      for (const v of verdictKeys) lines.push(`      ${v}: ${s.verdictCounts[v]}`)
+    }
+  }
+  lines.push('')
+  return lines
+}
+
 const main = (): void => {
   const [root, indexPath, checkModeArg] = process.argv.slice(2)
   const checkMode = checkModeArg === 'true'
@@ -235,7 +291,11 @@ const main = (): void => {
 
   reportStaleFindings(findStaleFindings(root, entries))
 
-  const output = `${buildIndexLines(entries).join('\n')}\n`
+  const jsonlLogs = [
+    summarizeJsonlLog(root, '.context/repo-scouting/log.jsonl', 'verdict'),
+  ].filter((s): s is JsonlLogSummary => s !== null)
+
+  const output = `${[...buildIndexLines(entries), ...buildJsonlLogLines(jsonlLogs)].join('\n')}\n`
   if (checkMode) {
     const current = existsSync(indexPath) ? readFileSync(indexPath, 'utf8') : ''
     if (output !== current) {
