@@ -62,7 +62,7 @@ entries:
   - path: "ADR/adr-008-inset-map-feature-design.md"
     adr: "ADR-008"
     title: "ADR-008: Inset map overlay — local compositing, single Static Maps fetch, on-by-default"
-    status: proposed
+    status: accepted
     date: 2026-08-23
     context:
       - path: ".context/findings/2026-08-23-inset-map-with-route-in-the-video-corner-feasibility.md"
@@ -94,7 +94,7 @@ entries:
   - path: "ADR/adr-012-switch-to-release-please.md"
     adr: "ADR-012"
     title: "ADR-012: Switch from release-plz to release-please for versioning and changelog"
-    status: proposed
+    status: accepted
     date: 2026-08-24
     context:
       - path: ".context/plans/2026-08-24-add-release-and-changelog-pipeline.md"
@@ -170,3 +170,11 @@ entries:
     date: 2026-08-25
     context:
       - path: ".context/plans/2026-08-25-detect-adr-status-drift-in-ci.md"
+  - path: "ADR/adr-023-off-route-streetview-frame-filtering-design.md"
+    adr: "ADR-023"
+    title: "ADR-023: Off-route Street View frame filtering: threshold source, retroactive-run scope, and shipping despite unproven benefit"
+    status: accepted
+    date: 2026-08-26
+    context:
+      - path: ".context/findings/2026-08-25-off-route-misdirected-streetview-frames.md"
+      - path: ".context/plans/2026-08-25-filter-off-route-streetview-frames.md"
