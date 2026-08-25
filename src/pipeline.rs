@@ -657,4 +657,100 @@ mod tests {
         assert_eq!(cleaned, points.to_vec());
         assert_eq!(cleaned_interpolated, is_interpolated.to_vec());
     }
+
+    fn temp_dir(label: &str) -> std::path::PathBuf {
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "svmm-pipeline-test-{label}-{}-{n}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Regression check for the 2026-08-25 gate-decoupling decision:
+    /// `--show-turn-signs --hide-map` (`map_state: None`, `show_turn_signs:
+    /// true`) must still run the compositing pass, not silently pass frames
+    /// through untouched the way `--hide-map` alone does.
+    #[tokio::test]
+    async fn lineup_and_composite_runs_compositing_for_turn_signs_with_no_map() {
+        let images_dir = temp_dir("images");
+        let mut image_paths = Vec::new();
+        for i in 0..2u8 {
+            let path = images_dir.join(format!("frame{i}.jpg"));
+            image::RgbImage::from_pixel(64, 32, image::Rgb([i * 10, i * 10, i * 10]))
+                .save(&path)
+                .unwrap();
+            image_paths.push(path);
+        }
+        let all_points = vec![(0.0, 0.0, 0.0), (0.0, 0.001, 0.0)];
+        let lineup_dir = temp_dir("lineup");
+        let composited_dir = temp_dir("composited");
+
+        let final_paths = lineup_and_composite(
+            image_paths,
+            all_points,
+            lineup_dir,
+            composited_dir.clone(),
+            None,
+            "bottom-right",
+            vec![],
+            true,
+            2.5,
+            20,
+            2,
+        )
+        .await
+        .expect("lineup_and_composite should succeed");
+
+        assert_eq!(final_paths.len(), 2);
+        assert!(
+            composited_dir.exists(),
+            "compositing should have run (and created composited/) even with no inset map"
+        );
+        for path in &final_paths {
+            assert!(
+                path.starts_with(&composited_dir),
+                "{path:?} should be a composited/ frame, not a passthrough lineup/ frame"
+            );
+        }
+    }
+
+    /// Companion to the above: with neither the map nor turn-signs
+    /// requested, compositing must NOT run — frames pass through from
+    /// lineup/ untouched, matching this codebase's pre-existing behavior.
+    #[tokio::test]
+    async fn lineup_and_composite_skips_compositing_when_nothing_is_requested() {
+        let images_dir = temp_dir("images-none");
+        let path = images_dir.join("frame0.jpg");
+        image::RgbImage::from_pixel(64, 32, image::Rgb([1, 2, 3]))
+            .save(&path)
+            .unwrap();
+        let lineup_dir = temp_dir("lineup-none");
+        let composited_dir = temp_dir("composited-none");
+        // Not created by this test — asserting on it below proves
+        // composite_all's own `create_dir_all` never ran.
+        std::fs::remove_dir_all(&composited_dir).unwrap();
+
+        let final_paths = lineup_and_composite(
+            vec![path],
+            vec![(0.0, 0.0, 0.0)],
+            lineup_dir.clone(),
+            composited_dir.clone(),
+            None,
+            "bottom-right",
+            vec![],
+            false,
+            2.5,
+            20,
+            2,
+        )
+        .await
+        .expect("lineup_and_composite should succeed");
+
+        assert_eq!(final_paths.len(), 1);
+        assert!(final_paths[0].starts_with(&lineup_dir));
+        assert!(!composited_dir.exists());
+    }
 }
