@@ -1,0 +1,32 @@
+{
+  "type": "weighted_checklist",
+  "max_output_tokens": 4096,
+  "context": "Evaluates whether the agent logs a PORT_CANDIDATE result correctly without letting the log entry substitute for the finding or plan a real decision needs.",
+  "checklist": [
+    {
+      "name": "Correct verdict value",
+      "description": "verdict is set to PORT_CANDIDATE, the strongest signal in the enum",
+      "max_score": 12
+    },
+    {
+      "name": "Separate finding or plan filed",
+      "description": "Does not let the log entry substitute for the finding or plan this real decision needs -- files one via context-file or plan-create",
+      "max_score": 26
+    },
+    {
+      "name": "related field populated",
+      "description": "The log entry's related field points at the newly created finding or plan once it exists",
+      "max_score": 24
+    },
+    {
+      "name": "Finding has real substance",
+      "description": "The finding or plan itself documents the technique and recommendation in enough detail to act on, not just a one-line pointer",
+      "max_score": 20
+    },
+    {
+      "name": "Validation run",
+      "description": "validate-repo-scouting-log.sh run or its command shown before declaring the entry logged",
+      "max_score": 18
+    }
+  ]
+}

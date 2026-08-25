@@ -84,9 +84,20 @@ gitignored under `.context/` rather than a committed `docs/` file, and why the f
    recommended for implementation).
 4. Append the entry as a single line to `.context/repo-scouting/log.jsonl` (create the file, and the
    `.context/repo-scouting/` directory, if this is the first entry).
-5. Run `scripts/validate-repo-scouting-log.sh` before treating the entry as logged -- catches a malformed entry or an
-   accidental duplicate immediately rather than leaving it for the next reader to notice.
+5. Run `scripts/validate-repo-scouting-log.sh` to check for zero errors before treating the entry as logged -- catches
+   a malformed entry or an accidental duplicate immediately rather than leaving it for the next reader to notice.
 6. If working in a worktree, sync the log back to the main checkout (Rule 4).
+
+## Mindset
+
+- A `NOTHING_NEW` entry is not a wasted write -- it's the only thing that turns "we haven't looked" into "we looked
+  and it wasn't useful" for the next session. Treat logging as part of finishing the investigation, not an optional
+  extra step after the real work is done.
+- This log's value compounds only if every investigation is logged, not just the ones that felt interesting. A log
+  that only records `PORT_CANDIDATE`/`NEW_FINDING_NEEDED` verdicts is indistinguishable from no log at all on the
+  question that actually matters: "has anyone checked this repo before?"
+- The log describes what was true when it was checked, not a permanent verdict -- a repo that changes substantially
+  after a `NOTHING_NEW` entry may warrant a fresh look, not an automatic skip.
 
 ## Scripts
 
@@ -100,23 +111,32 @@ scripts/validate-repo-scouting-log.sh   # Content: does every line match repo-sc
 `related` path existence is checked but only warns (never fails) -- a path can legitimately point at a finding/plan
 not written yet.
 
-## Troubleshooting
+## Anti-Patterns
 
-```text
-Problem                                          | Solution
-Validation fails: a field doesn't match          | validate-repo-scouting-log.sh caught a malformed field --
-                                                  | fix it to match repo-scouting-entry.schema.json's constraints.
-Validation fails: duplicate url                  | Another entry already covers this repo -- read its verdict/
-                                                  | reasoning instead of re-investigating from scratch.
-Validation fails: schema required fields         | The script's known field list is out of sync with a schema
-mismatch                                         | edit -- update validate-repo-scouting-log.sh's expected_fields.
-Validation warns: related path doesn't exist     | Non-fatal by design -- the referenced finding/plan may not be
-                                                  | written yet. Fix the path or file the referenced document.
-Log file doesn't exist yet                       | Not an error -- this is the first entry. Create
-                                                  | .context/repo-scouting/log.jsonl and the parent directory.
-Entry logged in a worktree isn't visible          | .context/ is untracked, so each worktree has its own copy --
-elsewhere                                        | sync log.jsonl back to the main checkout (Rule 4).
-```
+**NEVER** skip logging a `NOTHING_NEW` result because it doesn't feel worth recording.
+**WHY:** The whole value of this log is distinguishing "we haven't looked" from "we looked and it wasn't useful" --
+skipping the boring verdicts leaves exactly the case a future session needs most.
+**BAD:** Investigating a repo, concluding it's unrelated, and moving on without appending an entry.
+**GOOD:** Appending a `NOTHING_NEW` entry with a one-line reason, even when the investigation took two minutes.
+
+**NEVER** treat a logged entry as a permanent verdict that blocks re-investigation forever.
+**WHY:** The log records what was true when it was checked -- a repo that's changed substantially since a
+`NOTHING_NEW` entry may deserve a fresh look, and treating old entries as immutable defeats that.
+**BAD:** Refusing to look at a repo again just because any entry exists for its URL, regardless of age or content.
+**GOOD:** Reading the existing entry's `verdict` and `reasoning` first, then deciding whether it still holds.
+
+**NEVER** let a log entry substitute for the finding or plan a real decision needs.
+**WHY:** This is a research log, not a decision registry -- a `PORT_CANDIDATE`/`NEW_FINDING_NEEDED` verdict with no
+follow-up finding leaves the actual decision undocumented anywhere durable.
+**BAD:** Logging `verdict: PORT_CANDIDATE` with reasoning in the log entry and stopping there.
+**GOOD:** Filing the finding/plan via `context-file`/`plan-create`, then pointing the log entry at it via `related`.
+
+**NEVER** forget to sync a worktree's log back to the main checkout before the worktree is removed.
+**WHY:** `.context/` is untracked, so a worktree's copy of the log is the only copy that exists until synced --
+removing the worktree first destroys the entry permanently, with no git history to recover it from.
+**BAD:** Logging an entry in a worktree, then calling `ExitWorktree` with `action: "remove"` without syncing first.
+**GOOD:** Copying `.context/repo-scouting/log.jsonl` back to the main checkout as part of finishing the session's
+work, the same way any other `.context/` file created in a worktree is synced.
 
 ## References
 
@@ -126,3 +146,4 @@ elsewhere                                        | sync log.jsonl back to the ma
 | Entry shape as enforceable constraints | `assets/schemas/repo-scouting-entry.schema.json` | Checking what the validator script actually enforces |
 | Full design rationale (location, format, verdict enum, deferred risks) | `.context/plans/2026-08-25-add-repo-scouting-log-skill.md` | Understanding why this skill is shaped the way it is |
 | Deciding whether an investigation's outcome belongs in `docs/RISK_REGISTER.md` or `docs/TECH_DEBT.md` too | `risk-register` / `tech-debt` skills | An investigation surfaces a real cost, risk, or cleanup item beyond "log the verdict" |
+| One worked example per `verdict` value, and the full troubleshooting table | `references/worked-examples-and-troubleshooting.md` | Unsure how much detail an entry needs, or a validation run fails and the fix isn't obvious |

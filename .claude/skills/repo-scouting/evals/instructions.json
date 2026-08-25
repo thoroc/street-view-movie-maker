@@ -1,0 +1,54 @@
+{
+  "instructions": [
+    {
+      "type": "anti-pattern",
+      "why_given": "new knowledge",
+      "content": "NEVER skip logging a NOTHING_NEW result because it doesn't feel worth recording -- the whole value of this log is distinguishing 'we haven't looked' from 'we looked and it wasn't useful', and skipping the boring verdicts leaves exactly the case a future session needs most."
+    },
+    {
+      "type": "anti-pattern",
+      "why_given": "new knowledge",
+      "content": "NEVER treat a logged entry as a permanent verdict that blocks re-investigation forever -- the log records what was true when it was checked, and a repo that's changed substantially since may deserve a fresh look."
+    },
+    {
+      "type": "anti-pattern",
+      "why_given": "new knowledge",
+      "content": "NEVER let a log entry substitute for the finding or plan a real decision needs -- this is a research log, not a decision registry, and a PORT_CANDIDATE/NEW_FINDING_NEEDED verdict with no follow-up finding leaves the actual decision undocumented anywhere durable."
+    },
+    {
+      "type": "anti-pattern",
+      "why_given": "new knowledge",
+      "content": "NEVER forget to sync a worktree's log back to the main checkout before the worktree is removed -- .context/ is untracked, so a worktree's copy is the only copy that exists until synced, and removing the worktree first destroys the entry permanently."
+    },
+    {
+      "type": "procedure",
+      "why_given": "new knowledge",
+      "content": "Before investigating an external repo, check .context/repo-scouting/log.jsonl for an existing entry with the same url (case-insensitively) first."
+    },
+    {
+      "type": "procedure",
+      "why_given": "new knowledge",
+      "content": "Compose an entry matching repo-scouting-entry.schema.json's shape (url, date, repo_name, summary, verdict, reasoning, optional related) before appending it to the log."
+    },
+    {
+      "type": "procedure",
+      "why_given": "new knowledge",
+      "content": "Run scripts/validate-repo-scouting-log.sh to check for zero errors before treating a new entry as logged, even though there's no pre-commit hook enforcing it."
+    },
+    {
+      "type": "procedure",
+      "why_given": "reminder",
+      "content": "If working in a worktree, sync the log back to the main checkout the same way any other .context/ file is synced."
+    },
+    {
+      "type": "guidance",
+      "why_given": "new knowledge",
+      "content": "verdict is one of NOTHING_NEW, INFORMS_EXISTING, NEW_FINDING_NEEDED, or PORT_CANDIDATE -- chosen to match the actual outcome, not defaulted to the strongest or weakest option."
+    },
+    {
+      "type": "guidance",
+      "why_given": "new knowledge",
+      "content": "Do NOT use this log for a decision that's actually been made, internal code review of svmm's own code, or anything confidential."
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "type": "weighted_checklist",
+  "max_output_tokens": 4096,
+  "context": "Evaluates whether the agent checks the log before investigating a repo that may already have an entry, surfaces the existing verdict instead of redundantly re-investigating, and syncs a worktree's log back to the main checkout when appropriate.",
+  "checklist": [
+    {
+      "name": "Log checked first",
+      "description": "Checks .context/repo-scouting/log.jsonl for a matching url before starting a fresh investigation",
+      "max_score": 24
+    },
+    {
+      "name": "Existing verdict surfaced",
+      "description": "Reads the existing entry's verdict and reasoning back to the user instead of re-investigating from scratch",
+      "max_score": 24
+    },
+    {
+      "name": "No redundant re-investigation",
+      "description": "Does not re-investigate the repo without a stated reason to think it materially changed",
+      "max_score": 20
+    },
+    {
+      "name": "Worktree sync mentioned",
+      "description": "If working in a worktree, syncs the log back to the main checkout before the worktree is removed",
+      "max_score": 20
+    },
+    {
+      "name": "Case-insensitive match",
+      "description": "Treats the url match as case-insensitive, matching GitHub's own URL handling",
+      "max_score": 12
+    }
+  ]
+}
