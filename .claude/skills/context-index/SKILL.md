@@ -37,6 +37,12 @@ scripts/check-context-frontmatter.sh .context/**/*.md
    recommendation may be fully actioned. A finding with even one still-open related plan is not
    flagged; being fully actioned means all of them, not some. See `ways-of-working.md`'s "Keeping
    plans and findings in sync" for what to do with the notice.
+6. Appends a `## Structured Logs` section for any known structured, non-markdown `.context/` log
+   (currently just `.context/repo-scouting/log.jsonl`) — a path, entry count, and a breakdown of
+   its own `verdict`-style field, so the index at least signals the log exists and how big it is.
+   This does **not** index individual log entries the way frontmatter'd files are indexed above —
+   the log stays a log, read directly (`grep`/`jq`) when its content actually matters, not surveyed
+   via the index.
 
 The generated `index.yaml` looks like:
 
@@ -51,6 +57,11 @@ findings:
     title: "Finding: Topic"
     status: active
     date: 2026-07-01
+logs:
+  - path: ".context/repo-scouting/log.jsonl"
+    entries: 10
+    verdicts:
+      NOTHING_NEW: 6
 ```
 
 ## When to Use
