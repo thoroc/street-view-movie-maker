@@ -1,0 +1,30 @@
+# Repo scouting log entry template
+# Schema: ../schemas/repo-scouting-entry.schema.json
+#
+# The log itself, .context/repo-scouting/log.jsonl, is JSONL (one JSON object
+# per line), NOT this YAML format -- this file exists to illustrate the shape
+# a human can read comments on. When writing a real entry, convert this to a
+# single-line JSON object and append it as a new line in the .jsonl log; do
+# not write YAML into the log file itself.
+#
+# url values      : must match ^https://github\.com/[^/]+/[^/]+/?$ (owner/repo, no deeper path)
+# date format     : YYYY-MM-DD (date investigated, not a modification date)
+# verdict values  : NOTHING_NEW | INFORMS_EXISTING | NEW_FINDING_NEEDED | PORT_CANDIDATE
+# related         : omit entirely if there's nothing to point at -- do not write an empty list
+
+url: "https://github.com/sk-zk/streetlevel"
+date: "2026-08-25"
+repo_name: "sk-zk/streetlevel"
+summary: "Python library fetching panorama images/metadata across many street-level providers (Google, Apple, Yandex, Bing, Baidu, Kakao, Naver, Mapy.cz, Ja 360) via unofficial internal APIs; models Google's own linked/nearby-pano adjacency graph."
+verdict: "INFORMS_EXISTING"
+reasoning: >
+  Added a 6th, structurally different candidate (pano-adjacency-graph
+  heading) to the turn-detector known-issue, and a "regional providers"
+  section to the Google-alternatives finding, framed as a Rust-port
+  candidate, not a dependency.
+related:
+  - "../known-issues/2026-08-25-geometric-turn-detector-fires-on-gentle-curves.md"
+  - "../findings/2026-08-25-inset-map-provider-cost-alternatives-to-google-static-maps.md"
+
+# Corresponding single-line JSON object as it actually appears in log.jsonl:
+# {"url":"https://github.com/sk-zk/streetlevel","date":"2026-08-25","repo_name":"sk-zk/streetlevel","summary":"Python library fetching panorama images/metadata across many street-level providers (Google, Apple, Yandex, Bing, Baidu, Kakao, Naver, Mapy.cz, Ja 360) via unofficial internal APIs; models Google's own linked/nearby-pano adjacency graph.","verdict":"INFORMS_EXISTING","reasoning":"Added a 6th, structurally different candidate (pano-adjacency-graph heading) to the turn-detector known-issue, and a \"regional providers\" section to the Google-alternatives finding, framed as a Rust-port candidate, not a dependency.","related":["../known-issues/2026-08-25-geometric-turn-detector-fires-on-gentle-curves.md","../findings/2026-08-25-inset-map-provider-cost-alternatives-to-google-static-maps.md"]}

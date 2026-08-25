@@ -55,6 +55,7 @@ per `adr-capture`), state two things separately for each such rule, not just the
 | `context-file`   | `assets/templates/context-file-template.yaml`       | `assets/schemas/context-frontmatter.schema.json`     | none yet -- gap, tracked in `docs/RISK_REGISTER.md`                                             |
 | `risk-register`  | `assets/templates/risk-register-row-template.yaml`  | `assets/schemas/risk-register-row.schema.json`       | `scripts/validate-risk-register-append-only.sh` (history) + `validate-risk-register-schema.sh` (content) |
 | `tech-debt`      | `assets/templates/tech-debt-row-template.yaml`      | `assets/schemas/tech-debt-row.schema.json`           | `scripts/validate-tech-debt-schema.sh` (content only -- no append-only companion; rows are deleted, not archived) |
+| `repo-scouting`  | `assets/templates/repo-scouting-entry.yaml`         | `assets/schemas/repo-scouting-entry.schema.json`     | `scripts/validate-repo-scouting-log.sh` (schema conformance + duplicate-url check; no pre-commit wiring -- the log lives under gitignored `.context/`, so no hook can ever see it) |
 
 A skill can need more than one script when the artifact has more than one independent invariant to check (as
 `risk-register` does: row survival is a different question from row well-formedness). One template and one schema

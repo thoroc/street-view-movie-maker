@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/thoroc/street-view-movie-maker/refs/heads/main/.claude/skills/repo-scouting/assets/schemas/repo-scouting-entry.schema.json",
+  "title": "Repo Scouting Log Entry",
+  "description": "Shape of a single line in .context/repo-scouting/log.jsonl -- one JSON object per line (JSONL, not a JSON array). Enforced by scripts/validate-repo-scouting-log.sh; illustrated by assets/templates/repo-scouting-entry.yaml. Records that an external repo was investigated for techniques street-view-movie-maker could learn from or port, and what was decided -- not a decision registry (see SKILL.md).",
+  "type": "object",
+  "required": ["url", "date", "repo_name", "summary", "verdict", "reasoning"],
+  "additionalProperties": false,
+  "properties": {
+    "url": {
+      "type": "string",
+      "pattern": "^https://github\\.com/[^/]+/[^/]+/?$",
+      "description": "The repo's GitHub URL, no trailing path beyond owner/repo. Duplicate-checked case-insensitively by the validation script -- GitHub URLs aren't case-sensitive in practice."
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "YYYY-MM-DD, the date the repo was investigated."
+    },
+    "repo_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short slug, e.g. 'sk-zk/streetlevel' -- owner/repo, not a full URL."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One line: what the repo actually is. Not what it might be used for -- see reasoning for that."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["NOTHING_NEW", "INFORMS_EXISTING", "NEW_FINDING_NEEDED", "PORT_CANDIDATE"],
+      "description": "NOTHING_NEW: different domain, or a strict subset of prior art already on file. INFORMS_EXISTING: added a note/section to an already-open finding or known-issue. NEW_FINDING_NEEDED: novel enough to warrant its own new .context/ file. PORT_CANDIDATE: a stronger signal, actually recommended for implementation. This records that a signal was raised, not the decision itself -- NEW_FINDING_NEEDED/PORT_CANDIDATE entries still get a separate finding or plan if acted on."
+    },
+    "reasoning": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Free text: why that verdict. Self-contained -- a reader with no other context should understand it without re-reading a chat transcript."
+    },
+    "related": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Optional list of relative .context/ file paths this investigation updated or spawned. Omit entirely if none. Checked for existence by the validation script, but only as a warning -- a path can legitimately point at a finding/plan not yet written."
+    }
+  }
+}
