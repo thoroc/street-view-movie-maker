@@ -221,17 +221,33 @@ const SIGN_BACKGROUND_COLOR: Rgba<u8> = Rgba([20, 90, 40, 235]);
 const SIGN_GLYPH_COLOR: Rgba<u8> = Rgba([255, 255, 255, 255]);
 const SIGN_HEIGHT_PERCENT: f64 = 0.12;
 const SIGN_GAP_PERCENT: f64 = 0.015;
+/// The sign's direction glyph sits in a square area this many multiples of
+/// the sign's height wide, on the left; the road name fills the rest.
+const GLYPH_AREA_MULTIPLE: u32 = 1;
+/// Text scale as a fraction of the sign's height.
+const TEXT_HEIGHT_PERCENT: f32 = 0.55;
 
-/// Draws the turn-ahead sign's background plate and direction glyph for
-/// `maneuver` onto `frame`, in `corner` — stacked directly above
-/// `map_rect` (the inset map's on-frame rect) when present, per the
-/// layout decision in the plan, or standalone in that corner otherwise.
-///
-/// Road-name text is not drawn yet: it needs a bundled, redistributable
-/// font (`ab_glyph` plus a font file — see the plan's Risk/cost section),
-/// which this change doesn't include. The glyph alone still marks the
-/// upcoming turn; wiring in `imageproc::drawing::draw_text_mut` once a font
-/// is vendored is a small, isolated addition to this function.
+/// Signika (SIL OFL 1.1, https://github.com/googlefonts/Signika), chosen for
+/// its resemblance to the DIN 1451-style lettering used on road signage
+/// across much of continental Europe — see
+/// `.context/plans/2026-08-23-add-turn-ahead-road-sign-overlay.md`'s
+/// Risk/cost section. `assets/fonts/Signika-OFL.txt` carries the license.
+/// Baked into the binary via `include_bytes!` rather than loaded from disk
+/// at runtime, matching this project's single-self-contained-binary
+/// philosophy (no external asset the binary has to locate alongside it).
+static SIGN_FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/Signika[GRAD,wght].ttf");
+
+fn sign_font() -> &'static ab_glyph::FontRef<'static> {
+    static FONT: std::sync::LazyLock<ab_glyph::FontRef<'static>> = std::sync::LazyLock::new(|| {
+        ab_glyph::FontRef::try_from_slice(SIGN_FONT_BYTES).expect("bundled Signika font is valid")
+    });
+    &FONT
+}
+
+/// Draws the turn-ahead sign's background plate, direction glyph, and road
+/// name for `maneuver` onto `frame`, in `corner` — stacked directly above
+/// `map_rect` (the inset map's on-frame rect) when present, per the layout
+/// decision in the plan, or standalone in that corner otherwise.
 fn draw_turn_sign(
     frame: &mut RgbaImage,
     maneuver: &crate::directions::Maneuver,
@@ -240,7 +256,7 @@ fn draw_turn_sign(
 ) {
     let shorter = f64::from(frame.width().min(frame.height()));
     let sign_h = ((shorter * SIGN_HEIGHT_PERCENT).round() as u32).max(1);
-    let sign_w = sign_h * 2;
+    let sign_w = sign_h * 4;
 
     let (anchor_x, anchor_y, anchor_w, _anchor_h) = map_rect.unwrap_or_else(|| {
         corner_rect(
@@ -259,25 +275,45 @@ fn draw_turn_sign(
 
     let rect = imageproc::rect::Rect::at(x as i32, y as i32).of_size(sign_w, sign_h);
     imageproc::drawing::draw_filled_rect_mut(frame, rect, SIGN_BACKGROUND_COLOR);
-    draw_direction_glyph(frame, maneuver.direction, x, y, sign_w, sign_h);
+
+    let glyph_area_w = sign_h * GLYPH_AREA_MULTIPLE;
+    draw_direction_glyph(frame, maneuver.direction, x, y, glyph_area_w, sign_h);
+
+    if let Some(road_name) = &maneuver.road_name {
+        let scale = ab_glyph::PxScale::from(sign_h as f32 * TEXT_HEIGHT_PERCENT);
+        let font = sign_font();
+        let (_, text_h) = imageproc::drawing::text_size(scale, font, road_name);
+        let text_x = (x + i64::from(glyph_area_w)) as i32;
+        let text_y = (y + (i64::from(sign_h) - i64::from(text_h)) / 2) as i32;
+        imageproc::drawing::draw_text_mut(
+            frame,
+            SIGN_GLYPH_COLOR,
+            text_x,
+            text_y,
+            scale,
+            font,
+            road_name,
+        );
+    }
 }
 
-/// A plain triangular arrow (left/right) or chevron (straight-on/other) —
-/// no font needed, unlike the road-name text this sign is still missing.
+/// A plain triangular arrow (left/right) or chevron (straight-on/other),
+/// drawn as a shape rather than a text glyph — always available regardless
+/// of the road-name font.
 fn draw_direction_glyph(
     frame: &mut RgbaImage,
     direction: crate::directions::TurnDirection,
-    sign_x: i64,
-    sign_y: i64,
-    sign_w: u32,
-    sign_h: u32,
+    area_x: i64,
+    area_y: i64,
+    area_w: u32,
+    area_h: u32,
 ) {
     use crate::directions::TurnDirection;
     use imageproc::point::Point;
 
-    let cx = sign_x + i64::from(sign_w) / 2;
-    let cy = sign_y + i64::from(sign_h) / 2;
-    let arm = (i64::from(sign_h) / 3).max(1);
+    let cx = area_x + i64::from(area_w) / 2;
+    let cy = area_y + i64::from(area_h) / 2;
+    let arm = (i64::from(area_h) / 3).max(1);
     let pt = |x: i64, y: i64| Point::new(x as i32, y as i32);
 
     let points = match direction {
@@ -682,6 +718,32 @@ mod tests {
         assert!(
             found_sign_pixel,
             "expected to find the sign above the map rect"
+        );
+    }
+
+    #[test]
+    fn draw_turn_sign_renders_the_road_name_when_present() {
+        let mut with_name = RgbaImage::from_pixel(400, 100, Rgba([0, 0, 0, 255]));
+        let mut without_name = RgbaImage::from_pixel(400, 100, Rgba([0, 0, 0, 255]));
+        let named = crate::directions::Maneuver {
+            at: (0.0, 0.0),
+            direction: crate::directions::TurnDirection::Left,
+            road_name: Some("Main St".to_string()),
+        };
+        draw_turn_sign(&mut with_name, &named, MapCorner::BottomRight, None);
+        draw_turn_sign(
+            &mut without_name,
+            &maneuver((0.0, 0.0)),
+            MapCorner::BottomRight,
+            None,
+        );
+        // Somewhere in the sign's text half (right of the glyph area), the
+        // two images must differ — proves the font actually drew glyphs
+        // rather than silently no-op'ing.
+        assert_ne!(
+            with_name.as_raw(),
+            without_name.as_raw(),
+            "expected road-name text to change pixels within the sign"
         );
     }
 }

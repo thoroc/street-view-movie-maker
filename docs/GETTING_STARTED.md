@@ -161,7 +161,7 @@ fnox exec -- cargo run --release -- --from "Eiffel Tower" --to "Arc de Triomphe"
 
 **This is a different "turn" than `--turn-threshold`.** `--turn-threshold` controls an unrelated, purely geometric camera-smoothing feature: it inserts extra pan frames whenever the route's heading changes sharply between two points, regardless of whether that's a real intersection or just a bend in the road. `--show-turn-signs` only fires on real Directions API maneuvers.
 
-Only the direction (left/right/straight-on) is drawn as a glyph today — the road name itself isn't rendered onto the sign yet, pending a bundled text-rendering font.
+The sign shows both a direction glyph (arrow/chevron) and the upcoming road name, set in [Signika](https://github.com/googlefonts/Signika) (SIL Open Font License 1.1, bundled in the binary) — chosen for its resemblance to the DIN 1451-style lettering used on road signage across much of continental Europe.
 
 ## 4. Cost
 
