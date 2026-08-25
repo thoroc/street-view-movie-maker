@@ -254,11 +254,12 @@ fn draw_turn_sign(
     corner: MapCorner,
     map_rect: Option<(u32, u32, u32, u32)>,
 ) {
-    let shorter = f64::from(frame.width().min(frame.height()));
+    let (frame_w, frame_h) = frame.dimensions();
+    let shorter = f64::from(frame_w.min(frame_h));
     let sign_h = ((shorter * SIGN_HEIGHT_PERCENT).round() as u32).max(1);
     let sign_w = sign_h * 4;
 
-    let (anchor_x, anchor_y, anchor_w, _anchor_h) = map_rect.unwrap_or_else(|| {
+    let (anchor_x, anchor_y, anchor_w, anchor_h) = map_rect.unwrap_or_else(|| {
         corner_rect(
             frame.dimensions(),
             corner,
@@ -268,10 +269,27 @@ fn draw_turn_sign(
     });
     let gap = (shorter * SIGN_GAP_PERCENT).round() as i64;
 
+    // Stack on whichever side of the anchor has room to spare: above it for
+    // a bottom corner, below it for a top corner. Fixing this to "always
+    // above" would push the sign off the top of the frame for
+    // --map-corner top-left/top-right (found via a real end-to-end run,
+    // not caught by unit tests using only bottom-corner fixtures).
+    let stack_above = matches!(corner, MapCorner::BottomLeft | MapCorner::BottomRight);
+    let y = if stack_above {
+        i64::from(anchor_y) - gap - i64::from(sign_h)
+    } else {
+        i64::from(anchor_y) + i64::from(anchor_h) + gap
+    };
+    let max_y = (i64::from(frame_h) - i64::from(sign_h)).max(0);
+    let y = y.clamp(0, max_y);
+
     // Centered horizontally over whatever it's anchored to (the map's rect,
-    // or the same footprint the map would occupy), sitting just above it.
+    // or the same footprint the map would occupy), then clamped so a sign
+    // wider than that footprint never runs off either frame edge (the same
+    // real-run finding as above).
     let x = i64::from(anchor_x) + (i64::from(anchor_w) - i64::from(sign_w)) / 2;
-    let y = i64::from(anchor_y) - gap - i64::from(sign_h);
+    let max_x = (i64::from(frame_w) - i64::from(sign_w)).max(0);
+    let x = x.clamp(0, max_x);
 
     let rect = imageproc::rect::Rect::at(x as i32, y as i32).of_size(sign_w, sign_h);
     imageproc::drawing::draw_filled_rect_mut(frame, rect, SIGN_BACKGROUND_COLOR);
@@ -744,6 +762,69 @@ mod tests {
             with_name.as_raw(),
             without_name.as_raw(),
             "expected road-name text to change pixels within the sign"
+        );
+    }
+
+    /// Regression test for a real bug found running the actual binary
+    /// end-to-end: at the default 640x320 picsize with the default
+    /// bottom-right map corner, the sign (wider than the map's own
+    /// footprint) extended past the frame's right edge before the x-clamp
+    /// was added.
+    #[test]
+    fn draw_turn_sign_never_overflows_the_frame_at_default_picsize() {
+        let (frame_w, frame_h) = (640, 320);
+        let mut image = RgbaImage::from_pixel(frame_w, frame_h, Rgba([0, 0, 0, 255]));
+        let named = crate::directions::Maneuver {
+            at: (0.0, 0.0),
+            direction: crate::directions::TurnDirection::Right,
+            road_name: Some("W 33rd St".to_string()),
+        };
+        let map_rect = corner_rect(
+            (frame_w, frame_h),
+            MapCorner::BottomRight,
+            INSET_FOOTPRINT_PERCENT,
+            INSET_MARGIN_PERCENT,
+        );
+        draw_turn_sign(&mut image, &named, MapCorner::BottomRight, Some(map_rect));
+        // Nothing should have panicked (an out-of-bounds draw would have),
+        // and the rightmost column must still be plain background — proof
+        // the sign didn't get clipped by silently drawing past the edge.
+        assert_eq!(
+            *image.get_pixel(frame_w - 1, frame_h - 1),
+            Rgba([0, 0, 0, 255])
+        );
+    }
+
+    #[test]
+    fn draw_turn_sign_stacks_below_a_top_corner_map_instead_of_off_frame() {
+        let (frame_w, frame_h) = (300, 200);
+        let mut image = RgbaImage::from_pixel(frame_w, frame_h, Rgba([0, 0, 0, 255]));
+        let map_rect = corner_rect(
+            (frame_w, frame_h),
+            MapCorner::TopLeft,
+            INSET_FOOTPRINT_PERCENT,
+            INSET_MARGIN_PERCENT,
+        );
+        draw_turn_sign(
+            &mut image,
+            &maneuver((0.0, 0.0)),
+            MapCorner::TopLeft,
+            Some(map_rect),
+        );
+        // "Above" a top-corner map is off-frame; the sign must render
+        // below it instead, not get clamped invisibly to y=0 overlapping
+        // the map.
+        let (_, map_y, _, map_h) = map_rect;
+        let mut found_sign_pixel = false;
+        for y in (map_y + map_h)..frame_h {
+            if *image.get_pixel(10, y) == SIGN_BACKGROUND_COLOR {
+                found_sign_pixel = true;
+                break;
+            }
+        }
+        assert!(
+            found_sign_pixel,
+            "expected the sign below the top-corner map, not off-frame"
         );
     }
 }

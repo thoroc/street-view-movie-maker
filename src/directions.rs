@@ -162,8 +162,20 @@ fn strip_html_tags(input: &str) -> String {
 /// Extracts a road name from a step's `html_instructions`: the text after
 /// "onto"/"on" when present, else the tag-stripped instruction as a
 /// fallback. Returns `None` only if stripping leaves nothing at all.
+///
+/// The final step of a route commonly appends a secondary annotation as a
+/// nested `<div style="font-size:0.9em">Destination will be on the
+/// right</div>` — found by running this against a real route ending in a
+/// street address. `strip_html_tags` alone would keep that div's *text*
+/// (only tags are stripped), concatenating it straight onto the road name
+/// with no separator (`"W 33rd StDestination will be on the right"`). Cut
+/// the instruction at the first `<div` before stripping tags, since this
+/// annotation is never part of the road name itself.
 fn extract_road_name(html_instructions: &str) -> Option<String> {
-    let stripped = strip_html_tags(html_instructions);
+    let primary_instruction = html_instructions
+        .split_once("<div")
+        .map_or(html_instructions, |(before, _)| before);
+    let stripped = strip_html_tags(primary_instruction);
     let trimmed = stripped.trim();
     if trimmed.is_empty() {
         return None;
@@ -540,6 +552,18 @@ mod tests {
         assert_eq!(
             extract_road_name("Turn <b>left</b> onto <b>Main St</b>"),
             Some("Main St".to_string())
+        );
+    }
+
+    #[test]
+    fn extracts_road_name_ignoring_the_final_steps_destination_annotation() {
+        // Found running against a real route: the final step's
+        // html_instructions commonly appends this secondary div.
+        assert_eq!(
+            extract_road_name(
+                "Turn <b>right</b> onto <b>W 33rd St</b><div style=\"font-size:0.9em\">Destination will be on the right</div>"
+            ),
+            Some("W 33rd St".to_string())
         );
     }
 
