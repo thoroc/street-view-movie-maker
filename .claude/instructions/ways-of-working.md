@@ -20,10 +20,16 @@ same directory.
 - Call `EnterWorktree` as the first action of any session that will `Write`/`Edit` a file or run a mutating `Bash` command (branch, commit, etc.) — read-only exploration first is fine.
 - Untracked files do not carry over into a new worktree automatically. If a session already has uncommitted new files before calling `EnterWorktree`, copy them into the worktree directory after
   entering it (they live in a separate working tree, sharing only the `.git` object store).
+- **The same is true in reverse, and it's easy to miss because nothing errors when you skip it.** `.context/` is gitignored, so a squash-merge never carries its changes back to the main checkout —
+  only the worktree's own copy has them. Any plan/finding update made during the session (status flips, a `## Outcome` section, a recorded decision) exists **only** in the worktree's filesystem
+  until you copy it back. Before `ExitWorktree action: "remove"` (or any path that discards the worktree — including `discard_changes: true` after a squash-merge, which is the normal end state per
+  Branch workflow below), copy the worktree's `.context/` back over the main checkout's copy. Skipping this doesn't fail loudly: the code ships fine, and the plan/finding silently reverts to its
+  pre-implementation state as if the governance record was never updated, with no error or diff to notice it by. This applies to any other untracked working state the session created or modified in
+  the worktree, not just `.context/`.
 - Run `mise trust` once per worktree directory before the first commit. `mise`'s trust is path-scoped, so a freshly created worktree path starts untrusted, and `hk`'s `mise`-shelled pre-commit jobs
   fail until it's trusted.
 - Finish inside the worktree per Branch workflow below, then `ExitWorktree action: "keep"`, squash-merge from the main checkout, and clean up (see After merge — squash-merged worktree branches need
-  `-D`, not `-d`).
+  `-D`, not `-d`). **Sync `.context/` back to the main checkout before that cleanup discards the worktree** — see the bullet above.
 - **Caveat:** this is enforced by discipline, not a hard technical gate, for interactive/foreground sessions.
 
 ## Branch workflow
@@ -97,6 +103,9 @@ touched, even if you weren't working "from" that plan/finding or arrived at the 
 same commit: mark the relevant part done, correct any design description that no longer matches what actually shipped, and note the commit that did it. Do not leave a plan or finding describing
 work as still-to-do once the work is done, no matter how it got done — either can be independently resolved by an unrelated commit that never references it.
 
+**If you're doing this from inside a worktree, none of it is actually saved until you copy `.context/` back to the main checkout** — see Worktree-first sessions above. A status flip or `## Outcome`
+section written only to the worktree's copy is indistinguishable from never having written it at all, once that worktree is removed.
+
 ## After merge
 
 **Deleting the merged branch is mandatory, not optional — never leave merged branches straggling.** As soon as a branch lands in `main`, delete it locally (GitHub auto-deletes remote branches after PR
@@ -110,7 +119,8 @@ git checkout main && git pull && git branch -d <branch-name>
 
 **Squash-merged branches in this repo need `-D`, not `-d`.** Because the golden path here is squash-merge into `main` (see Merge strategy below), the branch's own commits are never ancestors of the
 new squashed commit — `git branch -d` will refuse with "not fully merged" even though the content landed correctly. Once you've confirmed the squash commit is on `main` (e.g.
-`git log --oneline -1 main` shows it), force-delete is expected and safe:
+`git log --oneline -1 main` shows it), **copy the worktree's `.context/` back over the main checkout's copy first** (see Worktree-first sessions above — this is the last point at which that
+gitignored state still exists), then force-delete is expected and safe:
 
 ```bash
 git worktree remove <worktree-path>   # if the branch was checked out in a worktree — required before deleting the branch
