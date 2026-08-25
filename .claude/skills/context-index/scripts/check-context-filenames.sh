@@ -20,7 +20,7 @@ else
 fi
 
 date_first_re='^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*\.md$'
-allowed_dirs=("plans" "findings" "analysis" "follow-ups" "audits" "learnings" "handover")
+allowed_dirs=("plans" "findings" "analysis" "follow-ups" "audits" "learnings" "handover" "known-issues")
 
 errors=()
 
@@ -44,7 +44,7 @@ for f in "${files[@]}"; do
         fi
     done
     if [[ "$known" == false ]]; then
-        errors+=("$rel: lives in .context/$subdir/, not one of plans/findings/analysis/follow-ups/learnings/handover")
+        errors+=("$rel: lives in .context/$subdir/, not one of plans/findings/analysis/follow-ups/learnings/handover/known-issues")
         continue
     fi
     [[ "$subdir" == "audits" ]] && continue

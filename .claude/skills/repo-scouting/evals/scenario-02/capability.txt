@@ -1,0 +1,1 @@
+Check the repo-scouting log before investigating, and sync a worktree's log entry back to the main checkout.

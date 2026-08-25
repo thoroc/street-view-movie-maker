@@ -1,0 +1,1 @@
+Log a PORT_CANDIDATE result without letting the log entry substitute for the finding a real decision needs.
