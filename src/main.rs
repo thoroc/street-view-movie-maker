@@ -5,10 +5,12 @@ mod itinerary;
 mod lineup;
 mod maps;
 mod net;
+mod pricing;
 mod prompt;
 mod streetview;
 mod video;
 
+use pricing::{STATIC_MAP_PRICE_PER_1000_USD, STREETVIEW_PRICE_PER_1000_USD};
 use prompt::{
     prompt_bool_with_default, prompt_choice_with_default, prompt_optional, prompt_parsed,
     prompt_required, prompt_with_default,
@@ -365,24 +367,6 @@ fn output_paths(dir: &std::path::Path, name: &str) -> OutputPaths {
     }
 }
 
-/// Street View Static API pricing per Google's published rate card
-/// (developers.google.com/maps/billing-and-pricing/pricing, last checked
-/// 2026-08-23): $7.00 per 1,000 images, with the first 10,000/month free.
-/// This estimate assumes no free-tier allowance remains this month, since
-/// the CLI has no way to know how much of it you've already used — the
-/// actual charge may be $0 if you're within that allowance.
-const STREETVIEW_PRICE_PER_1000_USD: f64 = 7.00;
-
-/// Maps Static API pricing per Google's published rate card (same source as
-/// the Street View constant above, last checked 2026-08-23): $2.00 per 1,000
-/// requests, with the first 10,000/month free. Only one Static Maps request
-/// happens per run regardless of frame count.
-const STATIC_MAP_PRICE_PER_1000_USD: f64 = 2.00;
-
-fn estimate_download_cost_usd(image_count: usize) -> f64 {
-    image_count as f64 / 1000.0 * STREETVIEW_PRICE_PER_1000_USD
-}
-
 /// The one Static Maps image fetched per run, plus what's needed to place
 /// the per-frame marker on it (see `geo::lat_lon_to_pixel`) and pan/crop a
 /// local-area window around it (see `compositing::crop_window`).
@@ -580,7 +564,7 @@ async fn run() -> Result<(), String> {
     println!("Images to download: {}", processed.len());
     println!(
         "Estimated cost: up to ${:.2} (Street View Static API, ${STREETVIEW_PRICE_PER_1000_USD:.2}/1000 images — Google's first 10,000 images/month are free, so this may cost $0 if you're within that allowance this month; the CLI can't check your remaining quota). Metadata probing above was free.",
-        estimate_download_cost_usd(processed.len())
+        pricing::estimate_download_cost_usd(processed.len())
     );
     if !args.hide_map {
         println!(
@@ -881,23 +865,5 @@ mod tests {
     fn default_output_name_includes_both_slugified_endpoints() {
         let name = super::default_output_name("48.8611,2.3358", "Simiane-la-Rotonde");
         assert!(name.starts_with("48-8611-2-3358-simiane-la-rotonde-"));
-    }
-
-    #[test]
-    fn estimate_download_cost_usd_scales_with_image_count() {
-        assert_eq!(super::estimate_download_cost_usd(0), 0.0);
-        assert_eq!(super::estimate_download_cost_usd(1000), 7.0);
-        assert_eq!(super::estimate_download_cost_usd(500), 3.5);
-    }
-
-    #[test]
-    fn estimate_download_cost_usd_matches_a_realistic_route_size() {
-        // A ~90km route (like the Marseille-airport-to-Simiane-la-Rotonde
-        // example) produced ~8500 images in practice.
-        let cost = super::estimate_download_cost_usd(8500);
-        assert!(
-            (cost - 59.5).abs() < 1e-9,
-            "expected ~$59.50 for 8500 images, got ${cost}"
-        );
     }
 }
