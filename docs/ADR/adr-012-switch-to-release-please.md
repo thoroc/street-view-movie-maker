@@ -1,12 +1,12 @@
 ---
 title: "ADR-012: Switch from release-plz to release-please for versioning and changelog"
-status: proposed
+status: accepted
 date: 2026-08-24
 context:
   - path: ".context/plans/2026-08-24-add-release-and-changelog-pipeline.md"
 ---
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-24
 
 ## Context
