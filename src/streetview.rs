@@ -94,6 +94,12 @@ pub enum StreetviewError {
 }
 
 #[derive(Debug, Deserialize)]
+struct RawLocation {
+    lat: f64,
+    lng: f64,
+}
+
+#[derive(Debug, Deserialize)]
 struct RawMetadata {
     status: String,
     #[serde(default)]
@@ -102,6 +108,8 @@ struct RawMetadata {
     date: Option<String>,
     #[serde(default)]
     pano_id: Option<String>,
+    #[serde(default)]
+    location: Option<RawLocation>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -110,6 +118,21 @@ pub struct StreetviewMetadata {
     pub copyright: Option<String>,
     pub date: Option<String>,
     pub pano_id: Option<String>,
+    /// The matched panorama's actual (lat, lon), as returned by Google —
+    /// distinct from the coordinates queried. `None` if the response omitted
+    /// `location`, or it was outside valid lat/lon bounds (treated the same
+    /// as absent rather than fed into distance math downstream).
+    pub location: Option<(f64, f64)>,
+}
+
+/// Rejects out-of-range coordinates so a malformed response can't propagate
+/// NaN/nonsensical values into `geo::haversine_meters` downstream.
+fn valid_location(loc: RawLocation) -> Option<(f64, f64)> {
+    if (-90.0..=90.0).contains(&loc.lat) && (-180.0..=180.0).contains(&loc.lng) {
+        Some((loc.lat, loc.lng))
+    } else {
+        None
+    }
 }
 
 /// Parses a Street View metadata response. Most non-"OK" statuses (no
@@ -128,6 +151,7 @@ pub fn parse_metadata_response(body: &str) -> Result<StreetviewMetadata, Streetv
             copyright: raw.copyright,
             date: raw.date,
             pano_id: raw.pano_id,
+            location: raw.location.and_then(valid_location),
         }),
     }
 }
@@ -327,6 +351,7 @@ mod tests {
         assert_eq!(meta.status, "OK");
         assert_eq!(meta.pano_id.as_deref(), Some("abc123"));
         assert_eq!(meta.copyright.as_deref(), Some("\u{a9} Google"));
+        assert_eq!(meta.location, Some((45.5, -73.5)));
     }
 
     #[test]
@@ -335,6 +360,22 @@ mod tests {
         let meta = parse_metadata_response(body).unwrap();
         assert_eq!(meta.status, "ZERO_RESULTS");
         assert_eq!(meta.pano_id, None);
+        assert_eq!(meta.location, None);
+    }
+
+    #[test]
+    fn parses_ok_metadata_response_missing_location() {
+        let body = r#"{"status": "OK", "pano_id": "abc123"}"#;
+        let meta = parse_metadata_response(body).unwrap();
+        assert_eq!(meta.location, None);
+    }
+
+    #[test]
+    fn out_of_range_location_is_treated_as_absent() {
+        let body =
+            r#"{"status": "OK", "pano_id": "abc123", "location": {"lat": 200.0, "lng": -73.5}}"#;
+        let meta = parse_metadata_response(body).unwrap();
+        assert_eq!(meta.location, None);
     }
 
     #[test]
