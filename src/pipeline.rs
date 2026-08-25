@@ -61,15 +61,22 @@ pub async fn run() -> Result<(), String> {
 
     let client = reqwest::Client::new();
 
-    let (records, maneuvers, start_display, end_display, fingerprint) = resume_or_fetch_itinerary(
-        &client,
-        &directions_key,
-        &args,
-        &tuning,
-        &avoid,
-        &paths.itinerary_path,
-    )
-    .await?;
+    let (records, maneuvers, persisted_excluded_frames, start_display, end_display, fingerprint) =
+        resume_or_fetch_itinerary(
+            &client,
+            &directions_key,
+            &args,
+            &tuning,
+            &avoid,
+            &paths.itinerary_path,
+        )
+        .await?;
+    // Additive: a frame excluded on a previous run stays excluded even if
+    // this run's `--exclude-frames` is narrower or omitted entirely.
+    let excluded_frames: std::collections::BTreeSet<usize> = persisted_excluded_frames
+        .into_iter()
+        .chain(args.exclude_frames.iter().copied())
+        .collect();
 
     let sv_params = streetview::StreetviewParams {
         picsize: args.picsize.clone(),
@@ -90,6 +97,7 @@ pub async fn run() -> Result<(), String> {
         tuning.hop_size,
         &paths.itinerary_path,
         &fingerprint,
+        &excluded_frames,
     )
     .await?;
 
@@ -132,8 +140,23 @@ pub async fn run() -> Result<(), String> {
         maneuvers,
         &paths.itinerary_path,
         fingerprint,
+        &excluded_frames,
     )
     .await?;
+
+    if !excluded_frames.is_empty() {
+        eprintln!(
+            "{} frame(s) excluded from compositing (manually via --exclude-frames or a previous run): {excluded_frames:?}",
+            excluded_frames.len()
+        );
+    }
+    let (image_paths, all_points): (Vec<_>, Vec<_>) = image_paths
+        .into_iter()
+        .zip(all_points)
+        .enumerate()
+        .filter(|(i, _)| !excluded_frames.contains(i))
+        .map(|(_, pair)| pair)
+        .unzip();
 
     let final_frame_paths = lineup_and_composite(
         image_paths,
@@ -202,6 +225,7 @@ async fn resume_or_fetch_itinerary(
     (
         Vec<itinerary::PointRecord>,
         Vec<directions::Maneuver>,
+        std::collections::BTreeSet<usize>,
         String,
         String,
         String,
@@ -212,16 +236,20 @@ async fn resume_or_fetch_itinerary(
     let existing = itinerary::load_from(itinerary_path).map_err(|e| e.to_string())?;
     let decision = itinerary::resolve_resume(existing, &fingerprint, args.fresh);
 
-    let (records, maneuvers, start_display, end_display) = match decision {
+    let (records, maneuvers, excluded_frames, start_display, end_display) = match decision {
         itinerary::ResumeDecision::FingerprintMismatch { expected, found } => {
             return Err(format!(
                 "persisted itinerary at {} was built for a different route/tuning (expected fingerprint {expected}, found {found}); pass --fresh to start over",
                 itinerary_path.display()
             ));
         }
-        itinerary::ResumeDecision::Resume(records, maneuvers) => {
-            (records, maneuvers, args.from.clone(), args.to.clone())
-        }
+        itinerary::ResumeDecision::Resume(records, maneuvers, excluded_frames) => (
+            records,
+            maneuvers,
+            excluded_frames,
+            args.from.clone(),
+            args.to.clone(),
+        ),
         itinerary::ResumeDecision::Fresh => {
             let origin = directions::parse_route_endpoint(&args.from);
             let destination = directions::parse_route_endpoint(&args.to);
@@ -268,11 +296,24 @@ async fn resume_or_fetch_itinerary(
                 .end_address
                 .clone()
                 .unwrap_or_else(|| format!("{:?}", route.end));
-            (records, route.maneuvers, start_display, end_display)
+            (
+                records,
+                route.maneuvers,
+                std::collections::BTreeSet::new(),
+                start_display,
+                end_display,
+            )
         }
     };
 
-    Ok((records, maneuvers, start_display, end_display, fingerprint))
+    Ok((
+        records,
+        maneuvers,
+        excluded_frames,
+        start_display,
+        end_display,
+        fingerprint,
+    ))
 }
 
 /// Probes Street View metadata for any record not already probed, then
@@ -293,6 +334,7 @@ async fn probe_missing_frames(
     hop_size: f64,
     itinerary_path: &std::path::Path,
     fingerprint: &str,
+    excluded_frames: &std::collections::BTreeSet<usize>,
 ) -> Result<(Vec<itinerary::PointRecord>, Vec<directions::Maneuver>), String> {
     let to_probe: Vec<(usize, f64, f64, f64)> = records
         .iter()
@@ -322,6 +364,7 @@ async fn probe_missing_frames(
             records[i].status = Some(meta.status);
             records[i].pano_id = meta.pano_id;
             records[i].copyright = meta.copyright;
+            records[i].pano_location = meta.location;
         }
         itinerary::save_to(
             itinerary_path,
@@ -329,11 +372,21 @@ async fn probe_missing_frames(
                 fingerprint: fingerprint.to_string(),
                 records: records.clone(),
                 maneuvers: maneuvers.clone(),
+                excluded_frames: excluded_frames.clone(),
             },
         )
         .map_err(|e| e.to_string())?;
     }
 
+    let before_distance_filter = records.len();
+    let records =
+        itinerary::drop_far_matches(&records, hop_size, itinerary::MAX_PANO_MATCH_HOP_MULTIPLE);
+    let dropped_by_distance = before_distance_filter - records.len();
+    if dropped_by_distance > 0 {
+        eprintln!(
+            "{dropped_by_distance} frame(s) dropped automatically: matched panorama too far from the queried route point"
+        );
+    }
     let deduped = itinerary::dedupe_by_pano_id(&records);
     let maneuvers = itinerary::filter_maneuvers_by_proximity(
         maneuvers,
@@ -353,6 +406,7 @@ async fn probe_missing_frames(
             fingerprint: fingerprint.to_string(),
             records: processed.clone(),
             maneuvers: maneuvers.clone(),
+            excluded_frames: excluded_frames.clone(),
         },
     )
     .map_err(|e| e.to_string())?;
@@ -476,6 +530,7 @@ async fn download_frames(
     maneuvers: Vec<directions::Maneuver>,
     itinerary_path: &std::path::Path,
     fingerprint: String,
+    excluded_frames: &std::collections::BTreeSet<usize>,
 ) -> Result<
     (
         Vec<std::path::PathBuf>,
@@ -528,6 +583,7 @@ async fn download_frames(
             fingerprint,
             records: processed,
             maneuvers: maneuvers.clone(),
+            excluded_frames: excluded_frames.clone(),
         },
     )
     .map_err(|e| e.to_string())?;

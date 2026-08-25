@@ -17,6 +17,15 @@ pub struct PointRecord {
     /// hardening pass doesn't need to re-derive real-vs-interpolated from
     /// scratch (see `.context/known-issues/2026-08-25-geometric-turn-detector-fires-on-gentle-curves.md`).
     pub is_interpolated: bool,
+    /// The matched panorama's actual (lat, lon) from `StreetviewMetadata`,
+    /// distinct from `lat`/`lon` above (the queried route point). `None` for
+    /// an unprobed record, or one probed before this field existed.
+    /// `#[serde(default)]` deliberately: a record probed under the old schema
+    /// already has its frame decided (downloaded or not), so `drop_far_matches`
+    /// below skips the distance check entirely when this is absent rather than
+    /// re-litigating an already-made download decision.
+    #[serde(default)]
+    pub pano_location: Option<(f64, f64)>,
 }
 
 /// Builds the initial itinerary from a point list, computing headings toward
@@ -44,6 +53,7 @@ pub fn build_itinerary(points: &[(f64, f64)], is_interpolated: &[bool]) -> Vec<P
             copyright: None,
             downloaded: false,
             is_interpolated: is_interpolated[i],
+            pano_location: None,
         });
     }
     records
@@ -70,6 +80,47 @@ pub fn dedupe_by_pano_id(records: &[PointRecord]) -> Vec<PointRecord> {
         }
     }
     out
+}
+
+/// A matched panorama farther than this many multiples of `--hop-size` from
+/// the point it was queried for gets dropped, the same way `--radius`'s soft
+/// search hint isn't a hard filter — Google can return the "best available"
+/// panorama well outside it.
+pub const MAX_PANO_MATCH_HOP_MULTIPLE: f64 = 3.0;
+
+/// Drops any record whose matched panorama (`pano_location`) is farther than
+/// `hop_size_m * max_multiple` from the point it was queried for, logging a
+/// warning per dropped record — mirrors `filter_maneuvers_by_proximity`'s
+/// proximity check. A record with no `pano_location` (unprobed, or probed
+/// before this field existed) passes through unaffected: there's nothing to
+/// validate a distance against, and no download decision to revisit. Run
+/// this before `dedupe_by_pano_id` so a far-match record never wins that
+/// dedup for its `pano_id`.
+pub fn drop_far_matches(
+    records: &[PointRecord],
+    hop_size_m: f64,
+    max_multiple: f64,
+) -> Vec<PointRecord> {
+    let max_distance_m = hop_size_m * max_multiple;
+    records
+        .iter()
+        .filter(|record| {
+            let Some(pano_location) = record.pano_location else {
+                return true;
+            };
+            let distance = crate::geo::haversine_meters((record.lat, record.lon), pano_location);
+            if distance > max_distance_m {
+                eprintln!(
+                    "matched panorama for ({:.6}, {:.6}) is {distance:.0}m away (max {max_distance_m:.0}m) — dropping it",
+                    record.lat, record.lon
+                );
+                false
+            } else {
+                true
+            }
+        })
+        .cloned()
+        .collect()
 }
 
 /// Inserts extra frames between consecutive records whose heading changes by
@@ -153,6 +204,15 @@ pub struct ItineraryFile {
     /// field existed is expected to fail to load rather than silently
     /// resume with no signs (see the plan's Decisions section).
     pub maneuvers: Vec<crate::directions::Maneuver>,
+    /// Indices into `records` (the frame numbers shown in `images/frameN.jpg`)
+    /// to drop before compositing/encoding, e.g. a pano the automatic
+    /// distance check can't catch because it's simply facing the wrong way.
+    /// Unlike `maneuvers` above, `#[serde(default)]` here is safe: an absent
+    /// field means no exclusions were ever recorded, which is exactly true
+    /// for a file from before this existed — there's no capability to
+    /// silently lose.
+    #[serde(default)]
+    pub excluded_frames: std::collections::BTreeSet<usize>,
 }
 
 /// A maneuver whose nearest route point is farther than this many multiples
@@ -211,8 +271,15 @@ pub fn load_from(path: &std::path::Path) -> std::io::Result<Option<ItineraryFile
 #[derive(Debug)]
 pub enum ResumeDecision {
     Fresh,
-    Resume(Vec<PointRecord>, Vec<crate::directions::Maneuver>),
-    FingerprintMismatch { expected: String, found: String },
+    Resume(
+        Vec<PointRecord>,
+        Vec<crate::directions::Maneuver>,
+        std::collections::BTreeSet<usize>,
+    ),
+    FingerprintMismatch {
+        expected: String,
+        found: String,
+    },
 }
 
 /// Decides whether to resume from persisted itinerary state (see the plan's
@@ -230,7 +297,7 @@ pub fn resolve_resume(
     match existing {
         None => ResumeDecision::Fresh,
         Some(file) if file.fingerprint == current_fingerprint => {
-            ResumeDecision::Resume(file.records, file.maneuvers)
+            ResumeDecision::Resume(file.records, file.maneuvers, file.excluded_frames)
         }
         Some(file) => ResumeDecision::FingerprintMismatch {
             expected: current_fingerprint.to_string(),
@@ -327,6 +394,7 @@ mod tests {
             copyright: Some(copyright.to_string()),
             downloaded: false,
             is_interpolated: false,
+            pano_location: None,
         }
     }
 
@@ -374,6 +442,30 @@ mod tests {
         let deduped = dedupe_by_pano_id(&records);
         assert_eq!(deduped.len(), 1);
         assert_eq!(deduped[0].pano_id.as_deref(), Some("B"));
+    }
+
+    #[test]
+    fn drop_far_matches_keeps_a_close_match() {
+        let mut close = record(0.0, 0.0, 0.0, "A", "OK", "\u{a9} Google");
+        close.pano_location = Some((0.00001, 0.00001)); // ~1.5m away
+        let kept = drop_far_matches(&[close], 10.0, 3.0);
+        assert_eq!(kept.len(), 1);
+    }
+
+    #[test]
+    fn drop_far_matches_drops_a_far_match() {
+        let mut far = record(0.0, 0.0, 0.0, "A", "OK", "\u{a9} Google");
+        far.pano_location = Some((0.001, 0.001)); // ~157m away
+        let kept = drop_far_matches(&[far], 10.0, 3.0);
+        assert!(kept.is_empty());
+    }
+
+    #[test]
+    fn drop_far_matches_keeps_a_record_with_no_pano_location() {
+        let unprobed = record(0.0, 0.0, 0.0, "A", "OK", "\u{a9} Google");
+        assert_eq!(unprobed.pano_location, None);
+        let kept = drop_far_matches(&[unprobed], 10.0, 3.0);
+        assert_eq!(kept.len(), 1);
     }
 
     #[test]
@@ -437,7 +529,9 @@ mod tests {
     #[test]
     fn save_and_load_round_trips_the_itinerary() {
         let path = temp_path();
-        let records = vec![record(1.0, 2.0, 3.0, "A", "OK", "\u{a9} Google")];
+        let mut with_location = record(1.0, 2.0, 3.0, "A", "OK", "\u{a9} Google");
+        with_location.pano_location = Some((1.00001, 2.00002));
+        let records = vec![with_location];
         let maneuvers = vec![crate::directions::Maneuver {
             at: (1.0, 2.0),
             direction: crate::directions::TurnDirection::Left,
@@ -447,10 +541,31 @@ mod tests {
             fingerprint: "abc".to_string(),
             records: records.clone(),
             maneuvers,
+            excluded_frames: std::collections::BTreeSet::from([547]),
         };
         save_to(&path, &file).unwrap();
         let loaded = load_from(&path).unwrap();
         assert_eq!(loaded, Some(file));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn load_from_defaults_pano_location_when_absent_from_a_pre_change_file() {
+        // A record with no `pano_location` key (older itinerary.json) must
+        // still deserialize, with the field defaulting to `None`.
+        let path = temp_path();
+        let json = r#"{
+            "fingerprint": "abc",
+            "records": [{
+                "lat": 1.0, "lon": 2.0, "heading": 3.0,
+                "pano_id": "A", "status": "OK", "copyright": "© Google",
+                "downloaded": true, "is_interpolated": false
+            }],
+            "maneuvers": []
+        }"#;
+        std::fs::write(&path, json).unwrap();
+        let loaded = load_from(&path).unwrap().unwrap();
+        assert_eq!(loaded.records[0].pano_location, None);
         let _ = std::fs::remove_file(&path);
     }
 
@@ -472,12 +587,14 @@ mod tests {
             fingerprint: "fp1".to_string(),
             records: vec![record(0.0, 0.0, 0.0, "A", "OK", "\u{a9} Google")],
             maneuvers: vec![],
+            excluded_frames: std::collections::BTreeSet::new(),
         };
         let decision = resolve_resume(Some(existing.clone()), "fp1", false);
         match decision {
-            ResumeDecision::Resume(records, maneuvers) => {
+            ResumeDecision::Resume(records, maneuvers, excluded_frames) => {
                 assert_eq!(records, existing.records);
                 assert_eq!(maneuvers, existing.maneuvers);
+                assert_eq!(excluded_frames, existing.excluded_frames);
             }
             other => panic!("expected Resume, got {other:?}"),
         }
@@ -494,10 +611,31 @@ mod tests {
             fingerprint: "fp1".to_string(),
             records: vec![],
             maneuvers: vec![maneuver.clone()],
+            excluded_frames: std::collections::BTreeSet::new(),
         };
         let decision = resolve_resume(Some(existing), "fp1", false);
         match decision {
-            ResumeDecision::Resume(_, maneuvers) => assert_eq!(maneuvers, vec![maneuver]),
+            ResumeDecision::Resume(_, maneuvers, _) => assert_eq!(maneuvers, vec![maneuver]),
+            other => panic!("expected Resume, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_resume_carries_persisted_excluded_frames_through() {
+        let existing = ItineraryFile {
+            fingerprint: "fp1".to_string(),
+            records: vec![],
+            maneuvers: vec![],
+            excluded_frames: std::collections::BTreeSet::from([547, 672]),
+        };
+        let decision = resolve_resume(Some(existing), "fp1", false);
+        match decision {
+            ResumeDecision::Resume(_, _, excluded_frames) => {
+                assert_eq!(
+                    excluded_frames,
+                    std::collections::BTreeSet::from([547, 672])
+                );
+            }
             other => panic!("expected Resume, got {other:?}"),
         }
     }
@@ -508,6 +646,7 @@ mod tests {
             fingerprint: "fp1".to_string(),
             records: vec![],
             maneuvers: vec![],
+            excluded_frames: std::collections::BTreeSet::new(),
         };
         let decision = resolve_resume(Some(existing), "fp2", false);
         assert!(matches!(
@@ -522,6 +661,7 @@ mod tests {
             fingerprint: "fp1".to_string(),
             records: vec![],
             maneuvers: vec![],
+            excluded_frames: std::collections::BTreeSet::new(),
         };
         let decision = resolve_resume(Some(existing), "fp2", true);
         assert!(matches!(decision, ResumeDecision::Fresh));

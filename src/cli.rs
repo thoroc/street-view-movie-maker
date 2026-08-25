@@ -112,6 +112,14 @@ pub struct Args {
     /// Seconds of lead time before a turn the road-sign overlay appears
     #[usage(long)]
     turn_sign_lead_seconds: Option<f64>,
+
+    /// Comma-separated frame numbers to drop before compositing/encoding
+    /// (as shown in images/frameN.jpg), e.g. a pano that's facing the wrong
+    /// way despite being the nearest match Street View has. Merged into this
+    /// run's persisted exclusion list — once excluded, a frame number stays
+    /// excluded on later resumes without needing to pass this again.
+    #[usage(long)]
+    exclude_frames: Option<String>,
 }
 
 /// Values used when a field is left unset outside of --interactive.
@@ -154,6 +162,27 @@ pub struct ResolvedArgs {
     pub map_size: String,
     pub show_turn_signs: bool,
     pub turn_sign_lead_seconds: f64,
+    pub exclude_frames: Vec<usize>,
+}
+
+/// Parses `--exclude-frames`'s comma-separated value into frame numbers,
+/// e.g. `"547,672,2462"` -> `[547, 672, 2462]`. An empty/absent value yields
+/// an empty list; a non-numeric entry is a hard error rather than a silent
+/// skip, since a typo'd frame number here silently keeps a known-bad frame
+/// in the video.
+fn parse_exclude_frames(raw: &Option<String>) -> Result<Vec<usize>, String> {
+    match raw {
+        None => Ok(Vec::new()),
+        Some(s) if s.trim().is_empty() => Ok(Vec::new()),
+        Some(s) => s
+            .split(',')
+            .map(|part| {
+                part.trim()
+                    .parse::<usize>()
+                    .map_err(|_| format!("--exclude-frames: not a frame number: {part:?}"))
+            })
+            .collect(),
+    }
 }
 
 fn missing_flag_error(flag: &str) -> String {
@@ -208,6 +237,7 @@ fn resolve_args_noninteractive(raw: Args) -> Result<ResolvedArgs, String> {
     let output = raw
         .output
         .unwrap_or_else(|| default_output_name(&from, &to));
+    let exclude_frames = parse_exclude_frames(&raw.exclude_frames)?;
     Ok(ResolvedArgs {
         from,
         to,
@@ -236,10 +266,12 @@ fn resolve_args_noninteractive(raw: Args) -> Result<ResolvedArgs, String> {
         turn_sign_lead_seconds: raw
             .turn_sign_lead_seconds
             .unwrap_or(DEFAULT_TURN_SIGN_LEAD_SECONDS),
+        exclude_frames,
     })
 }
 
 fn resolve_args_interactive(raw: Args) -> Result<ResolvedArgs, String> {
+    let exclude_frames = parse_exclude_frames(&raw.exclude_frames)?;
     let from = match raw.from {
         Some(v) => v,
         None => prompt_required("Origin (\"lat,lon\" or a place/address)")?,
@@ -353,6 +385,7 @@ fn resolve_args_interactive(raw: Args) -> Result<ResolvedArgs, String> {
         yes: raw.yes,
         dry_run: raw.dry_run,
         fresh: raw.fresh,
+        exclude_frames,
     })
 }
 
