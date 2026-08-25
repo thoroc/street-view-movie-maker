@@ -163,6 +163,10 @@ fnox exec -- cargo run --release -- --from "Eiffel Tower" --to "Arc de Triomphe"
 
 The sign shows both a direction glyph (arrow/chevron) and the upcoming road name, set in [Signika](https://github.com/googlefonts/Signika) (SIL Open Font License 1.1, bundled in the binary) — chosen for its resemblance to the DIN 1451-style lettering used on road signage across much of continental Europe.
 
+Here's a frame from the same demo route as the inset-map screenshot above, with `--show-turn-signs` also enabled — the sign stacked above the inset map, showing the upcoming turn onto Av. d'Iéna:
+
+![A frame from an svmm output video, with the inset map and a green turn-ahead road sign stacked above it, showing a right-turn arrow and the upcoming road name](media/demo-turn-sign-frame.jpg)
+
 ## 4. Cost
 
 Prices below are from Google's published rate card (developers.google.com/maps/billing-and-pricing/pricing, checked 2026-08-23) — verify against the live console before relying on them at volume, since Google's pricing changes.
