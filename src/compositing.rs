@@ -134,7 +134,7 @@ pub enum CompositingError {
 }
 
 #[derive(Debug, Clone)]
-pub struct CompositeParams {
+pub struct InsetMapParams {
     pub corner: MapCorner,
     pub margin_percent: f64,
     pub footprint_percent: f64,
@@ -147,70 +147,237 @@ pub struct CompositeParams {
     pub crop_size: (u32, u32),
 }
 
+/// A maneuver already matched to its nearest frame index (see
+/// `match_maneuvers_to_frames`), for cheap forward-scanning inside the
+/// per-frame compositing loop instead of a haversine search per frame.
+#[derive(Debug, Clone)]
+pub struct MatchedManeuver {
+    pub frame_index: usize,
+    pub maneuver: crate::directions::Maneuver,
+}
+
+#[derive(Debug, Clone)]
+pub struct TurnSignParams {
+    pub corner: MapCorner,
+    /// Sorted by `frame_index` — see `match_maneuvers_to_frames`.
+    pub matched: Vec<MatchedManeuver>,
+    pub lead_frames: usize,
+}
+
+/// Matches each maneuver to its nearest frame (haversine, against each
+/// frame's own position) once up front. Independent of
+/// `itinerary::filter_maneuvers_by_proximity`, which runs earlier against
+/// the post-dedupe point list, before turn-frame insertion — this runs
+/// against the actual final frame sequence, which can differ in count and
+/// order after lineup/turn-frame processing.
+pub fn match_maneuvers_to_frames(
+    maneuvers: &[crate::directions::Maneuver],
+    frames: &[(usize, PathBuf, (f64, f64, f64))],
+) -> Vec<MatchedManeuver> {
+    let mut matched: Vec<MatchedManeuver> = maneuvers
+        .iter()
+        .filter_map(|maneuver| {
+            frames
+                .iter()
+                .min_by(|a, b| {
+                    let da = crate::geo::haversine_meters(maneuver.at, (a.2.0, a.2.1));
+                    let db = crate::geo::haversine_meters(maneuver.at, (b.2.0, b.2.1));
+                    da.total_cmp(&db)
+                })
+                .map(|(frame_index, _, _)| MatchedManeuver {
+                    frame_index: *frame_index,
+                    maneuver: maneuver.clone(),
+                })
+        })
+        .collect();
+    matched.sort_by_key(|m| m.frame_index);
+    matched
+}
+
+/// The nearest upcoming maneuver for `frame_index`, if one's matched frame
+/// falls within `[frame_index, frame_index + lead_frames]`. Approaching
+/// from the frame's side (adding `lead_frames` rather than subtracting it
+/// from the target) means a maneuver near the route's start can't underflow
+/// the window. `matched` must be sorted by `frame_index`.
+pub fn upcoming_maneuver_for_frame(
+    matched: &[MatchedManeuver],
+    frame_index: usize,
+    lead_frames: usize,
+) -> Option<&crate::directions::Maneuver> {
+    let window_end = frame_index.saturating_add(lead_frames);
+    matched
+        .iter()
+        .find(|m| m.frame_index >= frame_index && m.frame_index <= window_end)
+        .map(|m| &m.maneuver)
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CompositeParams {
+    pub inset_map: Option<InsetMapParams>,
+    pub turn_sign: Option<TurnSignParams>,
+}
+
+const SIGN_BACKGROUND_COLOR: Rgba<u8> = Rgba([20, 90, 40, 235]);
+const SIGN_GLYPH_COLOR: Rgba<u8> = Rgba([255, 255, 255, 255]);
+const SIGN_HEIGHT_PERCENT: f64 = 0.12;
+const SIGN_GAP_PERCENT: f64 = 0.015;
+
+/// Draws the turn-ahead sign's background plate and direction glyph for
+/// `maneuver` onto `frame`, in `corner` — stacked directly above
+/// `map_rect` (the inset map's on-frame rect) when present, per the
+/// layout decision in the plan, or standalone in that corner otherwise.
+///
+/// Road-name text is not drawn yet: it needs a bundled, redistributable
+/// font (`ab_glyph` plus a font file — see the plan's Risk/cost section),
+/// which this change doesn't include. The glyph alone still marks the
+/// upcoming turn; wiring in `imageproc::drawing::draw_text_mut` once a font
+/// is vendored is a small, isolated addition to this function.
+fn draw_turn_sign(
+    frame: &mut RgbaImage,
+    maneuver: &crate::directions::Maneuver,
+    corner: MapCorner,
+    map_rect: Option<(u32, u32, u32, u32)>,
+) {
+    let shorter = f64::from(frame.width().min(frame.height()));
+    let sign_h = ((shorter * SIGN_HEIGHT_PERCENT).round() as u32).max(1);
+    let sign_w = sign_h * 2;
+
+    let (anchor_x, anchor_y, anchor_w, _anchor_h) = map_rect.unwrap_or_else(|| {
+        corner_rect(
+            frame.dimensions(),
+            corner,
+            INSET_FOOTPRINT_PERCENT,
+            INSET_MARGIN_PERCENT,
+        )
+    });
+    let gap = (shorter * SIGN_GAP_PERCENT).round() as i64;
+
+    // Centered horizontally over whatever it's anchored to (the map's rect,
+    // or the same footprint the map would occupy), sitting just above it.
+    let x = i64::from(anchor_x) + (i64::from(anchor_w) - i64::from(sign_w)) / 2;
+    let y = i64::from(anchor_y) - gap - i64::from(sign_h);
+
+    let rect = imageproc::rect::Rect::at(x as i32, y as i32).of_size(sign_w, sign_h);
+    imageproc::drawing::draw_filled_rect_mut(frame, rect, SIGN_BACKGROUND_COLOR);
+    draw_direction_glyph(frame, maneuver.direction, x, y, sign_w, sign_h);
+}
+
+/// A plain triangular arrow (left/right) or chevron (straight-on/other) —
+/// no font needed, unlike the road-name text this sign is still missing.
+fn draw_direction_glyph(
+    frame: &mut RgbaImage,
+    direction: crate::directions::TurnDirection,
+    sign_x: i64,
+    sign_y: i64,
+    sign_w: u32,
+    sign_h: u32,
+) {
+    use crate::directions::TurnDirection;
+    use imageproc::point::Point;
+
+    let cx = sign_x + i64::from(sign_w) / 2;
+    let cy = sign_y + i64::from(sign_h) / 2;
+    let arm = (i64::from(sign_h) / 3).max(1);
+    let pt = |x: i64, y: i64| Point::new(x as i32, y as i32);
+
+    let points = match direction {
+        TurnDirection::Left => vec![
+            pt(cx - arm, cy),
+            pt(cx + arm / 2, cy - arm),
+            pt(cx + arm / 2, cy + arm),
+        ],
+        TurnDirection::Right => vec![
+            pt(cx + arm, cy),
+            pt(cx - arm / 2, cy - arm),
+            pt(cx - arm / 2, cy + arm),
+        ],
+        TurnDirection::StraightOn | TurnDirection::Other => vec![
+            pt(cx, cy - arm),
+            pt(cx - arm, cy + arm / 2),
+            pt(cx + arm, cy + arm / 2),
+        ],
+    };
+    imageproc::drawing::draw_polygon_mut(frame, &points, SIGN_GLYPH_COLOR);
+}
+
 fn composite_frame(
     frame_path: &Path,
-    base_map: &RgbaImage,
+    base_map: Option<&RgbaImage>,
+    frame_index: usize,
     point: (f64, f64, f64),
     params: &CompositeParams,
     dest_path: &Path,
 ) -> Result<(), CompositingError> {
     let (lat, lon, heading) = point;
-    let frame = image::open(frame_path)
+    let mut frame = image::open(frame_path)
         .map_err(|source| CompositingError::Decode {
             path: frame_path.display().to_string(),
             source,
         })?
         .to_rgba8();
 
-    let mut map = base_map.clone();
-    let marker_px = crate::geo::lat_lon_to_pixel(
-        lat,
-        lon,
-        params.map_center,
-        params.map_zoom,
-        params.map_size,
-    );
-    draw_marker(&mut map, marker_px, MARKER_RADIUS_PX, MARKER_COLOR);
+    let mut map_rect: Option<(u32, u32, u32, u32)> = None;
+    if let (Some(inset), Some(base_map)) = (&params.inset_map, base_map) {
+        let mut map = base_map.clone();
+        let marker_px = crate::geo::lat_lon_to_pixel(
+            lat,
+            lon,
+            inset.map_center,
+            inset.map_zoom,
+            inset.map_size,
+        );
+        draw_marker(&mut map, marker_px, MARKER_RADIUS_PX, MARKER_COLOR);
 
-    // Crop a source window big enough that rotating it about its center
-    // can't expose fill-colored corners in the final crop_size crop below,
-    // then rotate it so the current direction of travel points to the top
-    // of the inset ("track-up", like a car GPS display) instead of the map
-    // staying fixed north-up.
-    let source_side = safe_rotation_source_size(params.crop_size)
-        .min(map.width())
-        .min(map.height());
-    let (src_x, src_y, src_w, src_h) =
-        crop_window(map.dimensions(), marker_px, (source_side, source_side));
-    let source = image::imageops::crop_imm(&map, src_x, src_y, src_w, src_h).to_image();
-    let rotated = imageproc::geometric_transformations::rotate_about_center(
-        &source,
-        (heading as f32).to_radians(),
-        imageproc::geometric_transformations::Interpolation::Bilinear,
-        ROTATION_FILL_COLOR,
-    );
+        // Crop a source window big enough that rotating it about its center
+        // can't expose fill-colored corners in the final crop_size crop
+        // below, then rotate it so the current direction of travel points
+        // to the top of the inset ("track-up", like a car GPS display)
+        // instead of the map staying fixed north-up.
+        let source_side = safe_rotation_source_size(inset.crop_size)
+            .min(map.width())
+            .min(map.height());
+        let (src_x, src_y, src_w, src_h) =
+            crop_window(map.dimensions(), marker_px, (source_side, source_side));
+        let source = image::imageops::crop_imm(&map, src_x, src_y, src_w, src_h).to_image();
+        let rotated = imageproc::geometric_transformations::rotate_about_center(
+            &source,
+            (heading as f32).to_radians(),
+            imageproc::geometric_transformations::Interpolation::Bilinear,
+            ROTATION_FILL_COLOR,
+        );
 
-    // Rotating about the source crop's center keeps the marker (which was
-    // centered in that crop, per `crop_window`) at the rotated image's
-    // center too, so the final crop just needs to be centered on it.
-    let rotated_center = (
-        f64::from(rotated.width()) / 2.0,
-        f64::from(rotated.height()) / 2.0,
-    );
-    let (crop_x, crop_y, crop_w, crop_h) =
-        crop_window(rotated.dimensions(), rotated_center, params.crop_size);
-    let cropped = image::imageops::crop_imm(&rotated, crop_x, crop_y, crop_w, crop_h).to_image();
+        // Rotating about the source crop's center keeps the marker (which
+        // was centered in that crop, per `crop_window`) at the rotated
+        // image's center too, so the final crop just needs to be centered
+        // on it.
+        let rotated_center = (
+            f64::from(rotated.width()) / 2.0,
+            f64::from(rotated.height()) / 2.0,
+        );
+        let (crop_x, crop_y, crop_w, crop_h) =
+            crop_window(rotated.dimensions(), rotated_center, inset.crop_size);
+        let cropped =
+            image::imageops::crop_imm(&rotated, crop_x, crop_y, crop_w, crop_h).to_image();
 
-    let (x, y, w, h) = corner_rect(
-        frame.dimensions(),
-        params.corner,
-        params.footprint_percent,
-        params.margin_percent,
-    );
-    let resized = image::imageops::resize(&cropped, w, h, image::imageops::FilterType::Lanczos3);
+        let rect = corner_rect(
+            frame.dimensions(),
+            inset.corner,
+            inset.footprint_percent,
+            inset.margin_percent,
+        );
+        let (x, y, w, h) = rect;
+        let resized =
+            image::imageops::resize(&cropped, w, h, image::imageops::FilterType::Lanczos3);
+        image::imageops::overlay(&mut frame, &resized, i64::from(x), i64::from(y));
+        map_rect = Some(rect);
+    }
 
-    let mut frame = frame;
-    image::imageops::overlay(&mut frame, &resized, i64::from(x), i64::from(y));
+    if let Some(turn_sign) = &params.turn_sign
+        && let Some(maneuver) =
+            upcoming_maneuver_for_frame(&turn_sign.matched, frame_index, turn_sign.lead_frames)
+    {
+        draw_turn_sign(&mut frame, maneuver, turn_sign.corner, map_rect);
+    }
 
     image::DynamicImage::ImageRgba8(frame)
         .to_rgb8()
@@ -221,23 +388,31 @@ fn composite_frame(
         })
 }
 
-/// Composites the inset map (with a per-frame marker) onto every frame,
+/// Composites the inset map and/or turn-ahead signs onto every frame,
 /// reusing `streetview::run_bounded`'s bounded-concurrency pattern since
 /// this runs over potentially thousands of frames. `composited/` is always
 /// fully rebuilt from `frames` every run — no resume/skip logic, matching
 /// the existing `lineup/` convention, since compositing is local-only (no
-/// API spend to save by skipping it).
+/// API spend to save by skipping it). `base_map_path` is required exactly
+/// when `params.inset_map` is `Some` — the two are decoupled (2026-08-25
+/// reassessment) so turn-signs alone (`--show-turn-signs --hide-map`) still
+/// composite.
 pub async fn composite_all(
     frames: Vec<(usize, PathBuf, (f64, f64, f64))>,
-    base_map_path: PathBuf,
+    base_map_path: Option<PathBuf>,
     dest_dir: PathBuf,
     params: CompositeParams,
     concurrency: usize,
 ) -> Result<Vec<PathBuf>, String> {
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-    let base_map = image::open(&base_map_path)
-        .map_err(|e| format!("failed to decode {}: {e}", base_map_path.display()))?
-        .to_rgba8();
+    let base_map = match base_map_path {
+        Some(path) => Some(
+            image::open(&path)
+                .map_err(|e| format!("failed to decode {}: {e}", path.display()))?
+                .to_rgba8(),
+        ),
+        None => None,
+    };
     let base_map = std::sync::Arc::new(base_map);
     let params = std::sync::Arc::new(params);
 
@@ -251,8 +426,15 @@ pub async fn composite_all(
             let dest_path = dest_dir.join(format!("frame{i}.jpg"));
             async move {
                 let result = tokio::task::spawn_blocking(move || {
-                    composite_frame(&frame_path, &base_map, point, &params, &dest_path)
-                        .map(|()| dest_path)
+                    composite_frame(
+                        &frame_path,
+                        base_map.as_ref().as_ref(),
+                        i,
+                        point,
+                        &params,
+                        &dest_path,
+                    )
+                    .map(|()| dest_path)
                 })
                 .await;
                 (i, result)
@@ -272,6 +454,93 @@ pub async fn composite_all(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn maneuver(at: (f64, f64)) -> crate::directions::Maneuver {
+        crate::directions::Maneuver {
+            at,
+            direction: crate::directions::TurnDirection::Left,
+            road_name: None,
+        }
+    }
+
+    fn frame(index: usize, point: (f64, f64, f64)) -> (usize, PathBuf, (f64, f64, f64)) {
+        (index, PathBuf::from(format!("frame{index}.jpg")), point)
+    }
+
+    #[test]
+    fn match_maneuvers_to_frames_picks_the_nearest_frame() {
+        let frames = vec![
+            frame(0, (0.0, 0.0, 0.0)),
+            frame(1, (0.0, 1.0, 0.0)),
+            frame(2, (0.0, 2.0, 0.0)),
+        ];
+        let maneuvers = vec![maneuver((0.0, 1.9))];
+        let matched = match_maneuvers_to_frames(&maneuvers, &frames);
+        assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].frame_index, 2);
+    }
+
+    #[test]
+    fn match_maneuvers_to_frames_sorts_by_frame_index() {
+        let frames = vec![
+            frame(0, (0.0, 0.0, 0.0)),
+            frame(1, (0.0, 1.0, 0.0)),
+            frame(2, (0.0, 2.0, 0.0)),
+        ];
+        // Second maneuver matches the earlier frame, first matches the later
+        // one — the matched list should still come out sorted by index.
+        let maneuvers = vec![maneuver((0.0, 2.0)), maneuver((0.0, 0.0))];
+        let matched = match_maneuvers_to_frames(&maneuvers, &frames);
+        assert_eq!(
+            matched.iter().map(|m| m.frame_index).collect::<Vec<_>>(),
+            vec![0, 2]
+        );
+    }
+
+    #[test]
+    fn upcoming_maneuver_for_frame_finds_a_maneuver_within_the_lead_window() {
+        let matched = vec![MatchedManeuver {
+            frame_index: 10,
+            maneuver: maneuver((0.0, 0.0)),
+        }];
+        assert!(upcoming_maneuver_for_frame(&matched, 5, 5).is_some());
+        assert!(upcoming_maneuver_for_frame(&matched, 10, 5).is_some());
+        assert!(upcoming_maneuver_for_frame(&matched, 4, 5).is_none());
+        assert!(upcoming_maneuver_for_frame(&matched, 11, 5).is_none());
+    }
+
+    #[test]
+    fn upcoming_maneuver_for_frame_never_underflows_near_route_start() {
+        let matched = vec![MatchedManeuver {
+            frame_index: 2,
+            maneuver: maneuver((0.0, 0.0)),
+        }];
+        // frame_index 0 with a lead window of 5 would require `2 - 5` if the
+        // window were computed by subtracting from the target; this must
+        // not panic or wrap, and 2 is within [0, 5].
+        assert!(upcoming_maneuver_for_frame(&matched, 0, 5).is_some());
+    }
+
+    #[test]
+    fn upcoming_maneuver_for_frame_gives_each_close_maneuver_its_own_approach() {
+        let matched = vec![
+            MatchedManeuver {
+                frame_index: 100,
+                maneuver: maneuver((0.0, 0.0)),
+            },
+            MatchedManeuver {
+                frame_index: 105,
+                maneuver: maneuver((0.0, 1.0)),
+            },
+        ];
+        // Both are in range at frame 96; the nearer one (100) wins.
+        let at_96 = upcoming_maneuver_for_frame(&matched, 96, 10).unwrap();
+        assert_eq!(at_96.at, (0.0, 0.0));
+        // Once frame 100 has passed, the second maneuver takes over instead
+        // of being permanently shadowed by the first.
+        let at_101 = upcoming_maneuver_for_frame(&matched, 101, 10).unwrap();
+        assert_eq!(at_101.at, (0.0, 1.0));
+    }
 
     #[test]
     fn parse_accepts_all_four_corners() {
@@ -365,5 +634,54 @@ mod tests {
         let mut image = RgbaImage::from_pixel(20, 20, Rgba([0, 0, 0, 255]));
         draw_marker(&mut image, (0.0, 0.0), 5.0, Rgba([255, 0, 0, 255]));
         draw_marker(&mut image, (19.0, 19.0), 5.0, Rgba([255, 0, 0, 255]));
+    }
+
+    #[test]
+    fn draw_turn_sign_paints_a_background_plate_standalone() {
+        let mut image = RgbaImage::from_pixel(200, 100, Rgba([0, 0, 0, 255]));
+        draw_turn_sign(
+            &mut image,
+            &maneuver((0.0, 0.0)),
+            MapCorner::BottomRight,
+            None,
+        );
+        let (x, y, _, _) = corner_rect(
+            (200, 100),
+            MapCorner::BottomRight,
+            INSET_FOOTPRINT_PERCENT,
+            INSET_MARGIN_PERCENT,
+        );
+        // The sign sits just above where the (absent) map's footprint would
+        // be — some pixel in that column should no longer be the plain
+        // black background.
+        let sample_y = y.saturating_sub(5);
+        assert_ne!(*image.get_pixel(x, sample_y), Rgba([0, 0, 0, 255]));
+    }
+
+    #[test]
+    fn draw_turn_sign_stacks_above_the_given_map_rect() {
+        let mut image = RgbaImage::from_pixel(200, 200, Rgba([0, 0, 0, 255]));
+        let map_rect = (50, 150, 80, 40);
+        draw_turn_sign(
+            &mut image,
+            &maneuver((0.0, 0.0)),
+            MapCorner::BottomRight,
+            Some(map_rect),
+        );
+        // Directly under the map's top edge should be untouched by the sign.
+        assert_eq!(*image.get_pixel(50, 151), Rgba([0, 0, 0, 255]));
+        // Somewhere above the map's top edge should now have the sign's
+        // background color.
+        let mut found_sign_pixel = false;
+        for y in 100..map_rect.1 {
+            if *image.get_pixel(70, y) == SIGN_BACKGROUND_COLOR {
+                found_sign_pixel = true;
+                break;
+            }
+        }
+        assert!(
+            found_sign_pixel,
+            "expected to find the sign above the map rect"
+        );
     }
 }

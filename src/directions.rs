@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RouteEndpoint {
@@ -107,7 +107,7 @@ struct LatLng {
 /// covers both known non-directional maneuvers (`merge`, `ferry`) and any
 /// maneuver string not yet recognized here — the sign still shows (see the
 /// straight-on decision in the plan), just without a left/right glyph.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TurnDirection {
     Left,
     Right,
@@ -136,7 +136,7 @@ impl TurnDirection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Maneuver {
     pub at: (f64, f64),
     pub direction: TurnDirection,

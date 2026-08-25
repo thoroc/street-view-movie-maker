@@ -61,7 +61,7 @@ pub async fn run() -> Result<(), String> {
 
     let client = reqwest::Client::new();
 
-    let (records, start_display, end_display, fingerprint) = resume_or_fetch_itinerary(
+    let (records, maneuvers, start_display, end_display, fingerprint) = resume_or_fetch_itinerary(
         &client,
         &directions_key,
         &args,
@@ -78,13 +78,16 @@ pub async fn run() -> Result<(), String> {
         radius: args.radius,
     };
 
-    let processed = probe_missing_frames(
+    let (processed, maneuvers) = probe_missing_frames(
         &client,
         &streetview_key,
         &sv_params,
         args.concurrency,
         records,
+        maneuvers,
+        args.show_turn_signs,
         tuning.turn_threshold,
+        tuning.hop_size,
         &paths.itinerary_path,
         &fingerprint,
     )
@@ -119,13 +122,14 @@ pub async fn run() -> Result<(), String> {
     )
     .await?;
 
-    let (image_paths, all_points) = download_frames(
+    let (image_paths, all_points, maneuvers) = download_frames(
         &client,
         &streetview_key,
         &sv_params,
         args.concurrency,
         &paths.images_dir,
         processed,
+        maneuvers,
         &paths.itinerary_path,
         fingerprint,
     )
@@ -138,6 +142,10 @@ pub async fn run() -> Result<(), String> {
         paths.composited_dir.clone(),
         map_state.as_ref(),
         &args.map_corner,
+        maneuvers,
+        args.show_turn_signs,
+        args.turn_sign_lead_seconds,
+        args.fps,
         args.concurrency,
     )
     .await?;
@@ -190,19 +198,30 @@ async fn resume_or_fetch_itinerary(
     tuning: &itinerary::TuningParams,
     avoid: &[directions::AvoidFeature],
     itinerary_path: &std::path::Path,
-) -> Result<(Vec<itinerary::PointRecord>, String, String, String), String> {
+) -> Result<
+    (
+        Vec<itinerary::PointRecord>,
+        Vec<directions::Maneuver>,
+        String,
+        String,
+        String,
+    ),
+    String,
+> {
     let fingerprint = itinerary::route_fingerprint(&args.from, &args.to, tuning);
     let existing = itinerary::load_from(itinerary_path).map_err(|e| e.to_string())?;
     let decision = itinerary::resolve_resume(existing, &fingerprint, args.fresh);
 
-    let (records, start_display, end_display) = match decision {
+    let (records, maneuvers, start_display, end_display) = match decision {
         itinerary::ResumeDecision::FingerprintMismatch { expected, found } => {
             return Err(format!(
                 "persisted itinerary at {} was built for a different route/tuning (expected fingerprint {expected}, found {found}); pass --fresh to start over",
                 itinerary_path.display()
             ));
         }
-        itinerary::ResumeDecision::Resume(records) => (records, args.from.clone(), args.to.clone()),
+        itinerary::ResumeDecision::Resume(records, maneuvers) => {
+            (records, maneuvers, args.from.clone(), args.to.clone())
+        }
         itinerary::ResumeDecision::Fresh => {
             let origin = directions::parse_route_endpoint(&args.from);
             let destination = directions::parse_route_endpoint(&args.to);
@@ -249,11 +268,11 @@ async fn resume_or_fetch_itinerary(
                 .end_address
                 .clone()
                 .unwrap_or_else(|| format!("{:?}", route.end));
-            (records, start_display, end_display)
+            (records, route.maneuvers, start_display, end_display)
         }
     };
 
-    Ok((records, start_display, end_display, fingerprint))
+    Ok((records, maneuvers, start_display, end_display, fingerprint))
 }
 
 /// Probes Street View metadata for any record not already probed, then
@@ -268,10 +287,13 @@ async fn probe_missing_frames(
     sv_params: &streetview::StreetviewParams,
     concurrency: usize,
     mut records: Vec<itinerary::PointRecord>,
+    maneuvers: Vec<directions::Maneuver>,
+    show_turn_signs: bool,
     turn_threshold: f64,
+    hop_size: f64,
     itinerary_path: &std::path::Path,
     fingerprint: &str,
-) -> Result<Vec<itinerary::PointRecord>, String> {
+) -> Result<(Vec<itinerary::PointRecord>, Vec<directions::Maneuver>), String> {
     let to_probe: Vec<(usize, f64, f64, f64)> = records
         .iter()
         .enumerate()
@@ -306,23 +328,36 @@ async fn probe_missing_frames(
             &itinerary::ItineraryFile {
                 fingerprint: fingerprint.to_string(),
                 records: records.clone(),
+                maneuvers: maneuvers.clone(),
             },
         )
         .map_err(|e| e.to_string())?;
     }
 
     let deduped = itinerary::dedupe_by_pano_id(&records);
+    let maneuvers = itinerary::filter_maneuvers_by_proximity(
+        maneuvers,
+        &deduped,
+        hop_size,
+        itinerary::MAX_MANEUVER_MATCH_HOP_MULTIPLE,
+    );
+    if show_turn_signs && maneuvers.is_empty() {
+        eprintln!(
+            "--show-turn-signs was set, but no maneuver survived matching against this route — the video will have no turn-ahead signs"
+        );
+    }
     let processed = itinerary::insert_turn_frames(&deduped, turn_threshold);
     itinerary::save_to(
         itinerary_path,
         &itinerary::ItineraryFile {
             fingerprint: fingerprint.to_string(),
             records: processed.clone(),
+            maneuvers: maneuvers.clone(),
         },
     )
     .map_err(|e| e.to_string())?;
 
-    Ok(processed)
+    Ok((processed, maneuvers))
 }
 
 /// Prints the route summary and cost estimate, then applies the `--dry-run`
@@ -438,9 +473,17 @@ async fn download_frames(
     concurrency: usize,
     images_dir: &std::path::Path,
     mut processed: Vec<itinerary::PointRecord>,
+    maneuvers: Vec<directions::Maneuver>,
     itinerary_path: &std::path::Path,
     fingerprint: String,
-) -> Result<(Vec<std::path::PathBuf>, Vec<(f64, f64, f64)>), String> {
+) -> Result<
+    (
+        Vec<std::path::PathBuf>,
+        Vec<(f64, f64, f64)>,
+        Vec<directions::Maneuver>,
+    ),
+    String,
+> {
     let download_inputs: Vec<(usize, f64, f64, f64, bool)> = processed
         .iter()
         .enumerate()
@@ -484,16 +527,20 @@ async fn download_frames(
         &itinerary::ItineraryFile {
             fingerprint,
             records: processed,
+            maneuvers: maneuvers.clone(),
         },
     )
     .map_err(|e| e.to_string())?;
 
-    Ok((image_paths, all_points))
+    Ok((image_paths, all_points, maneuvers))
 }
 
 /// Drops consecutive visually-identical frames, renumbers what's left
 /// sequentially, and composites the map inset onto each frame if one was
 /// fetched.
+// Each parameter is read independently; a bundling struct would obscure which
+// ones this stage actually touches.
+#[allow(clippy::too_many_arguments)]
 async fn lineup_and_composite(
     image_paths: Vec<std::path::PathBuf>,
     all_points: Vec<(f64, f64, f64)>,
@@ -501,6 +548,10 @@ async fn lineup_and_composite(
     composited_dir: std::path::PathBuf,
     map_state: Option<&MapState>,
     map_corner: &str,
+    maneuvers: Vec<directions::Maneuver>,
+    show_turn_signs: bool,
+    turn_sign_lead_seconds: f64,
+    fps: u32,
     concurrency: usize,
 ) -> Result<Vec<std::path::PathBuf>, String> {
     let (frame_paths, frame_points) = tokio::task::spawn_blocking(move || -> Result<_, String> {
@@ -515,36 +566,47 @@ async fn lineup_and_composite(
     .await
     .map_err(|e| e.to_string())??;
 
-    let final_frame_paths = if let Some(map_state) = map_state {
-        let corner = compositing::MapCorner::parse(map_corner)?;
-        let composite_params = compositing::CompositeParams {
-            corner,
-            margin_percent: compositing::INSET_MARGIN_PERCENT,
-            footprint_percent: compositing::INSET_FOOTPRINT_PERCENT,
-            map_center: map_state.center,
-            map_zoom: map_state.zoom,
-            map_size: map_state.size,
-            crop_size: map_state.crop_size,
-        };
-        let frames: Vec<(usize, std::path::PathBuf, (f64, f64, f64))> = frame_paths
-            .into_iter()
-            .zip(frame_points)
-            .enumerate()
-            .map(|(i, (path, point))| (i, path, point))
-            .collect();
-        compositing::composite_all(
-            frames,
-            map_state.path.clone(),
-            composited_dir,
-            composite_params,
-            concurrency,
-        )
-        .await?
-    } else {
-        frame_paths
-    };
+    // Compositing runs whenever the inset map is shown OR turn-signs are
+    // requested (2026-08-25 reassessment) — decoupled from "is the inset
+    // map on" so `--show-turn-signs --hide-map` still composites.
+    if map_state.is_none() && !show_turn_signs {
+        return Ok(frame_paths);
+    }
 
-    Ok(final_frame_paths)
+    let corner = compositing::MapCorner::parse(map_corner)?;
+    let frames: Vec<(usize, std::path::PathBuf, (f64, f64, f64))> = frame_paths
+        .into_iter()
+        .zip(frame_points)
+        .enumerate()
+        .map(|(i, (path, point))| (i, path, point))
+        .collect();
+
+    let inset_map = map_state.map(|map_state| compositing::InsetMapParams {
+        corner,
+        margin_percent: compositing::INSET_MARGIN_PERCENT,
+        footprint_percent: compositing::INSET_FOOTPRINT_PERCENT,
+        map_center: map_state.center,
+        map_zoom: map_state.zoom,
+        map_size: map_state.size,
+        crop_size: map_state.crop_size,
+    });
+    let turn_sign = show_turn_signs.then(|| compositing::TurnSignParams {
+        corner,
+        matched: compositing::match_maneuvers_to_frames(&maneuvers, &frames),
+        lead_frames: (turn_sign_lead_seconds * f64::from(fps)).round() as usize,
+    });
+
+    compositing::composite_all(
+        frames,
+        map_state.map(|m| m.path.clone()),
+        composited_dir,
+        compositing::CompositeParams {
+            inset_map,
+            turn_sign,
+        },
+        concurrency,
+    )
+    .await
 }
 
 /// Encodes the final frames to video and writes a representative preview

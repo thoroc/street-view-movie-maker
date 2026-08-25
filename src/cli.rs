@@ -102,6 +102,16 @@ pub struct Args {
     /// controlled by this flag
     #[usage(long)]
     map_size: Option<String>,
+
+    /// Show a road-sign-style overlay 2-3 seconds before a real navigation
+    /// turn, sourced from Directions API maneuver data (not the unrelated
+    /// --turn-threshold camera-smoothing heuristic)
+    #[usage(long)]
+    show_turn_signs: bool,
+
+    /// Seconds of lead time before a turn the road-sign overlay appears
+    #[usage(long)]
+    turn_sign_lead_seconds: Option<f64>,
 }
 
 /// Values used when a field is left unset outside of --interactive.
@@ -115,6 +125,7 @@ const DEFAULT_FPS: u32 = 20;
 const DEFAULT_CONCURRENCY: usize = 5;
 const DEFAULT_MAP_CORNER: &str = "bottom-right";
 const DEFAULT_MAP_SIZE: &str = "200x200";
+const DEFAULT_TURN_SIGN_LEAD_SECONDS: f64 = 2.5;
 const MAP_CORNER_CHOICES: [&str; 4] = ["top-left", "top-right", "bottom-left", "bottom-right"];
 
 /// Args with every field settled: either passed on the command line, filled in
@@ -141,6 +152,8 @@ pub struct ResolvedArgs {
     pub hide_map: bool,
     pub map_corner: String,
     pub map_size: String,
+    pub show_turn_signs: bool,
+    pub turn_sign_lead_seconds: f64,
 }
 
 fn missing_flag_error(flag: &str) -> String {
@@ -219,6 +232,10 @@ fn resolve_args_noninteractive(raw: Args) -> Result<ResolvedArgs, String> {
             .map_corner
             .unwrap_or_else(|| DEFAULT_MAP_CORNER.to_string()),
         map_size: raw.map_size.unwrap_or_else(|| DEFAULT_MAP_SIZE.to_string()),
+        show_turn_signs: raw.show_turn_signs,
+        turn_sign_lead_seconds: raw
+            .turn_sign_lead_seconds
+            .unwrap_or(DEFAULT_TURN_SIGN_LEAD_SECONDS),
     })
 }
 
@@ -316,6 +333,18 @@ fn resolve_args_interactive(raw: Args) -> Result<ResolvedArgs, String> {
             true
         } else {
             prompt_bool_with_default("Hide inset map", false)?
+        },
+        show_turn_signs: if raw.show_turn_signs {
+            true
+        } else {
+            prompt_bool_with_default("Show turn-ahead road-sign overlay", false)?
+        },
+        turn_sign_lead_seconds: match raw.turn_sign_lead_seconds {
+            Some(v) => v,
+            None => prompt_parsed(
+                "Turn-ahead sign lead time, in seconds",
+                DEFAULT_TURN_SIGN_LEAD_SECONDS,
+            )?,
         },
         from,
         to,

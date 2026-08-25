@@ -147,6 +147,48 @@ pub fn route_fingerprint(from: &str, to: &str, tuning: &TuningParams) -> String 
 pub struct ItineraryFile {
     pub fingerprint: String,
     pub records: Vec<PointRecord>,
+    /// Turn-ahead maneuvers matched against this itinerary's route, already
+    /// filtered by `filter_maneuvers_by_proximity`. No `#[serde(default)]`:
+    /// this project is pre-v1.0.0 and a persisted itinerary from before this
+    /// field existed is expected to fail to load rather than silently
+    /// resume with no signs (see the plan's Decisions section).
+    pub maneuvers: Vec<crate::directions::Maneuver>,
+}
+
+/// A maneuver whose nearest route point is farther than this many multiples
+/// of `--hop-size` gets dropped rather than tagged at a visibly wrong spot.
+pub const MAX_MANEUVER_MATCH_HOP_MULTIPLE: f64 = 3.0;
+
+/// Drops any maneuver whose nearest point in `points` (haversine) exceeds
+/// `hop_size_m * max_multiple`, logging a warning per dropped maneuver —
+/// placing a sign near a point that's actually far away would visibly
+/// mislead rather than help. Matches against the post-dedupe point list
+/// (call with `dedupe_by_pano_id`'s output), before `insert_turn_frames`.
+pub fn filter_maneuvers_by_proximity(
+    maneuvers: Vec<crate::directions::Maneuver>,
+    points: &[PointRecord],
+    hop_size_m: f64,
+    max_multiple: f64,
+) -> Vec<crate::directions::Maneuver> {
+    let max_distance_m = hop_size_m * max_multiple;
+    maneuvers
+        .into_iter()
+        .filter(|maneuver| {
+            let nearest = points
+                .iter()
+                .map(|p| crate::geo::haversine_meters(maneuver.at, (p.lat, p.lon)))
+                .fold(f64::INFINITY, f64::min);
+            if nearest > max_distance_m {
+                eprintln!(
+                    "turn-ahead sign near ({:.6}, {:.6}) is {nearest:.0}m from the nearest route point (max {max_distance_m:.0}m) — dropping it",
+                    maneuver.at.0, maneuver.at.1
+                );
+                false
+            } else {
+                true
+            }
+        })
+        .collect()
 }
 
 pub fn save_to(path: &std::path::Path, file: &ItineraryFile) -> std::io::Result<()> {
@@ -169,7 +211,7 @@ pub fn load_from(path: &std::path::Path) -> std::io::Result<Option<ItineraryFile
 #[derive(Debug)]
 pub enum ResumeDecision {
     Fresh,
-    Resume(Vec<PointRecord>),
+    Resume(Vec<PointRecord>, Vec<crate::directions::Maneuver>),
     FingerprintMismatch { expected: String, found: String },
 }
 
@@ -188,7 +230,7 @@ pub fn resolve_resume(
     match existing {
         None => ResumeDecision::Fresh,
         Some(file) if file.fingerprint == current_fingerprint => {
-            ResumeDecision::Resume(file.records)
+            ResumeDecision::Resume(file.records, file.maneuvers)
         }
         Some(file) => ResumeDecision::FingerprintMismatch {
             expected: current_fingerprint.to_string(),
@@ -396,9 +438,15 @@ mod tests {
     fn save_and_load_round_trips_the_itinerary() {
         let path = temp_path();
         let records = vec![record(1.0, 2.0, 3.0, "A", "OK", "\u{a9} Google")];
+        let maneuvers = vec![crate::directions::Maneuver {
+            at: (1.0, 2.0),
+            direction: crate::directions::TurnDirection::Left,
+            road_name: Some("Main St".to_string()),
+        }];
         let file = ItineraryFile {
             fingerprint: "abc".to_string(),
             records: records.clone(),
+            maneuvers,
         };
         save_to(&path, &file).unwrap();
         let loaded = load_from(&path).unwrap();
@@ -423,10 +471,33 @@ mod tests {
         let existing = ItineraryFile {
             fingerprint: "fp1".to_string(),
             records: vec![record(0.0, 0.0, 0.0, "A", "OK", "\u{a9} Google")],
+            maneuvers: vec![],
         };
         let decision = resolve_resume(Some(existing.clone()), "fp1", false);
         match decision {
-            ResumeDecision::Resume(records) => assert_eq!(records, existing.records),
+            ResumeDecision::Resume(records, maneuvers) => {
+                assert_eq!(records, existing.records);
+                assert_eq!(maneuvers, existing.maneuvers);
+            }
+            other => panic!("expected Resume, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_resume_carries_persisted_maneuvers_through() {
+        let maneuver = crate::directions::Maneuver {
+            at: (1.0, 2.0),
+            direction: crate::directions::TurnDirection::StraightOn,
+            road_name: None,
+        };
+        let existing = ItineraryFile {
+            fingerprint: "fp1".to_string(),
+            records: vec![],
+            maneuvers: vec![maneuver.clone()],
+        };
+        let decision = resolve_resume(Some(existing), "fp1", false);
+        match decision {
+            ResumeDecision::Resume(_, maneuvers) => assert_eq!(maneuvers, vec![maneuver]),
             other => panic!("expected Resume, got {other:?}"),
         }
     }
@@ -436,6 +507,7 @@ mod tests {
         let existing = ItineraryFile {
             fingerprint: "fp1".to_string(),
             records: vec![],
+            maneuvers: vec![],
         };
         let decision = resolve_resume(Some(existing), "fp2", false);
         assert!(matches!(
@@ -449,8 +521,35 @@ mod tests {
         let existing = ItineraryFile {
             fingerprint: "fp1".to_string(),
             records: vec![],
+            maneuvers: vec![],
         };
         let decision = resolve_resume(Some(existing), "fp2", true);
         assert!(matches!(decision, ResumeDecision::Fresh));
+    }
+
+    #[test]
+    fn filter_maneuvers_by_proximity_keeps_a_close_match() {
+        let maneuver = crate::directions::Maneuver {
+            at: (0.0, 0.0),
+            direction: crate::directions::TurnDirection::Left,
+            road_name: None,
+        };
+        let points = vec![record(0.0, 0.00001, 0.0, "A", "OK", "\u{a9} Google")];
+        let kept = filter_maneuvers_by_proximity(vec![maneuver.clone()], &points, 10.0, 3.0);
+        assert_eq!(kept, vec![maneuver]);
+    }
+
+    #[test]
+    fn filter_maneuvers_by_proximity_drops_a_far_match() {
+        let maneuver = crate::directions::Maneuver {
+            at: (0.0, 0.0),
+            direction: crate::directions::TurnDirection::Left,
+            road_name: None,
+        };
+        // ~1 degree of longitude at the equator is over 100km — far beyond
+        // any reasonable hop_size * max_multiple.
+        let points = vec![record(0.0, 1.0, 0.0, "A", "OK", "\u{a9} Google")];
+        let kept = filter_maneuvers_by_proximity(vec![maneuver], &points, 10.0, 3.0);
+        assert!(kept.is_empty());
     }
 }
