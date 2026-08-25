@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RouteEndpoint {
@@ -85,12 +85,110 @@ struct Leg {
     end_location: LatLng,
     start_address: Option<String>,
     end_address: Option<String>,
+    #[serde(default)]
+    steps: Vec<RawStep>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawStep {
+    html_instructions: String,
+    #[serde(default)]
+    maneuver: Option<String>,
+    start_location: LatLng,
 }
 
 #[derive(Debug, Deserialize)]
 struct LatLng {
     lat: f64,
     lng: f64,
+}
+
+/// A small display set Google's `maneuver` strings collapse into. `Other`
+/// covers both known non-directional maneuvers (`merge`, `ferry`) and any
+/// maneuver string not yet recognized here — the sign still shows (see the
+/// straight-on decision in the plan), just without a left/right glyph.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TurnDirection {
+    Left,
+    Right,
+    StraightOn,
+    Other,
+}
+
+impl TurnDirection {
+    fn from_maneuver(maneuver: &str) -> Self {
+        match maneuver {
+            "turn-left" | "turn-slight-left" | "turn-sharp-left" | "uturn-left" | "fork-left"
+            | "keep-left" | "roundabout-left" | "ramp-left" => TurnDirection::Left,
+            "turn-right" | "turn-slight-right" | "turn-sharp-right" | "uturn-right"
+            | "fork-right" | "keep-right" | "roundabout-right" | "ramp-right" => {
+                TurnDirection::Right
+            }
+            "straight" => TurnDirection::StraightOn,
+            "merge" | "ferry" | "ferry-train" => TurnDirection::Other,
+            other => {
+                eprintln!(
+                    "unrecognized Directions API maneuver {other:?} — showing a sign with no direction glyph"
+                );
+                TurnDirection::Other
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Maneuver {
+    pub at: (f64, f64),
+    pub direction: TurnDirection,
+    pub road_name: Option<String>,
+}
+
+/// Strips HTML tags from a Directions API `html_instructions` string, e.g.
+/// `"Turn <b>left</b> onto <b>Main St</b>"` -> `"Turn left onto Main St"`.
+fn strip_html_tags(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut in_tag = false;
+    for ch in input.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Extracts a road name from a step's `html_instructions`: the text after
+/// "onto"/"on" when present, else the tag-stripped instruction as a
+/// fallback. Returns `None` only if stripping leaves nothing at all.
+///
+/// The final step of a route commonly appends a secondary annotation as a
+/// nested `<div style="font-size:0.9em">Destination will be on the
+/// right</div>` — found by running this against a real route ending in a
+/// street address. `strip_html_tags` alone would keep that div's *text*
+/// (only tags are stripped), concatenating it straight onto the road name
+/// with no separator (`"W 33rd StDestination will be on the right"`). Cut
+/// the instruction at the first `<div` before stripping tags, since this
+/// annotation is never part of the road name itself.
+fn extract_road_name(html_instructions: &str) -> Option<String> {
+    let primary_instruction = html_instructions
+        .split_once("<div")
+        .map_or(html_instructions, |(before, _)| before);
+    let stripped = strip_html_tags(primary_instruction);
+    let trimmed = stripped.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    for marker in ["onto ", " on "] {
+        if let Some(idx) = trimmed.find(marker) {
+            let after = trimmed[idx + marker.len()..].trim();
+            if !after.is_empty() {
+                return Some(after.to_string());
+            }
+        }
+    }
+    Some(trimmed.to_string())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +198,7 @@ pub struct ResolvedRoute {
     pub end: (f64, f64),
     pub start_address: Option<String>,
     pub end_address: Option<String>,
+    pub maneuvers: Vec<Maneuver>,
 }
 
 /// Parses a raw Directions API JSON body into a resolved route, or a typed
@@ -137,12 +236,29 @@ pub fn parse_directions_response(body: &str) -> Result<ResolvedRoute, Directions
         .map_err(|e| DirectionsError::Polyline(e.to_string()))?;
     let points: Vec<(f64, f64)> = decoded.coords().map(|c| (c.y, c.x)).collect();
 
+    // Single leg only: this project has no waypoint/multi-stop support, so a
+    // point-A-to-B request always returns exactly one leg (see the plan's
+    // Out of scope section) — no multi-leg merge to reason about here.
+    let maneuvers: Vec<Maneuver> = leg
+        .steps
+        .iter()
+        .filter_map(|step| {
+            let maneuver = step.maneuver.as_deref()?;
+            Some(Maneuver {
+                at: (step.start_location.lat, step.start_location.lng),
+                direction: TurnDirection::from_maneuver(maneuver),
+                road_name: extract_road_name(&step.html_instructions),
+            })
+        })
+        .collect();
+
     Ok(ResolvedRoute {
         points,
         start: (leg.start_location.lat, leg.start_location.lng),
         end: (leg.end_location.lat, leg.end_location.lng),
         start_address: leg.start_address.clone(),
         end_address: leg.end_address.clone(),
+        maneuvers,
     })
 }
 
@@ -374,6 +490,146 @@ mod tests {
     fn malformed_json_maps_to_parse_error() {
         let err = parse_directions_response("not json").unwrap_err();
         assert!(matches!(err, DirectionsError::Parse(_)));
+    }
+
+    #[test]
+    fn maneuver_mapping_table() {
+        let left = [
+            "turn-left",
+            "turn-slight-left",
+            "turn-sharp-left",
+            "uturn-left",
+            "fork-left",
+            "keep-left",
+            "roundabout-left",
+            "ramp-left",
+        ];
+        for maneuver in left {
+            assert_eq!(
+                TurnDirection::from_maneuver(maneuver),
+                TurnDirection::Left,
+                "expected {maneuver} to map to Left"
+            );
+        }
+
+        let right = [
+            "turn-right",
+            "turn-slight-right",
+            "turn-sharp-right",
+            "uturn-right",
+            "fork-right",
+            "keep-right",
+            "roundabout-right",
+            "ramp-right",
+        ];
+        for maneuver in right {
+            assert_eq!(
+                TurnDirection::from_maneuver(maneuver),
+                TurnDirection::Right,
+                "expected {maneuver} to map to Right"
+            );
+        }
+
+        assert_eq!(
+            TurnDirection::from_maneuver("straight"),
+            TurnDirection::StraightOn
+        );
+    }
+
+    #[test]
+    fn maneuver_mapping_falls_back_to_other_for_non_directional_and_unknown_values() {
+        for maneuver in ["merge", "ferry", "ferry-train", "some-future-maneuver"] {
+            assert_eq!(
+                TurnDirection::from_maneuver(maneuver),
+                TurnDirection::Other,
+                "expected {maneuver} to map to Other"
+            );
+        }
+    }
+
+    #[test]
+    fn extracts_road_name_after_onto() {
+        assert_eq!(
+            extract_road_name("Turn <b>left</b> onto <b>Main St</b>"),
+            Some("Main St".to_string())
+        );
+    }
+
+    #[test]
+    fn extracts_road_name_ignoring_the_final_steps_destination_annotation() {
+        // Found running against a real route: the final step's
+        // html_instructions commonly appends this secondary div.
+        assert_eq!(
+            extract_road_name(
+                "Turn <b>right</b> onto <b>W 33rd St</b><div style=\"font-size:0.9em\">Destination will be on the right</div>"
+            ),
+            Some("W 33rd St".to_string())
+        );
+    }
+
+    #[test]
+    fn extracts_road_name_after_on() {
+        assert_eq!(
+            extract_road_name("Continue <b>straight</b> on <b>Elm St</b>"),
+            Some("Elm St".to_string())
+        );
+    }
+
+    #[test]
+    fn extracts_road_name_falls_back_to_stripped_instruction() {
+        assert_eq!(
+            extract_road_name("Head <b>north</b>"),
+            Some("Head north".to_string())
+        );
+    }
+
+    #[test]
+    fn extracts_road_name_returns_none_for_empty_instruction() {
+        assert_eq!(extract_road_name("<b></b>"), None);
+    }
+
+    const STEPS_RESPONSE: &str = r#"{
+        "status": "OK",
+        "routes": [{
+            "overview_polyline": {"points": "_p~iF~ps|U_ulLnnqC_mqNvxq`@"},
+            "legs": [{
+                "start_location": {"lat": 38.5, "lng": -120.2},
+                "end_location": {"lat": 43.25200, "lng": -126.45300},
+                "start_address": "Start Address",
+                "end_address": "End Address",
+                "steps": [
+                    {
+                        "html_instructions": "Head <b>north</b>",
+                        "start_location": {"lat": 38.5, "lng": -120.2}
+                    },
+                    {
+                        "html_instructions": "Turn <b>left</b> onto <b>Main St</b>",
+                        "maneuver": "turn-left",
+                        "start_location": {"lat": 40.7, "lng": -120.95}
+                    },
+                    {
+                        "html_instructions": "Continue <b>straight</b> onto <b>Main St</b>",
+                        "maneuver": "straight",
+                        "start_location": {"lat": 41.0, "lng": -121.0}
+                    }
+                ]
+            }]
+        }]
+    }"#;
+
+    #[test]
+    fn parses_maneuvers_from_steps_skipping_steps_with_no_maneuver_field() {
+        let route = parse_directions_response(STEPS_RESPONSE).unwrap();
+        assert_eq!(route.maneuvers.len(), 2);
+        assert_eq!(route.maneuvers[0].direction, TurnDirection::Left);
+        assert_eq!(route.maneuvers[0].road_name.as_deref(), Some("Main St"));
+        assert_eq!(route.maneuvers[1].direction, TurnDirection::StraightOn);
+    }
+
+    #[test]
+    fn ok_response_with_no_steps_has_no_maneuvers() {
+        let route = parse_directions_response(OK_RESPONSE).unwrap();
+        assert!(route.maneuvers.is_empty());
     }
 
     fn find_avoid_param<'a>(params: &'a [(&'static str, String)]) -> Option<&'a str> {

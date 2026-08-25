@@ -43,7 +43,7 @@ fn resuming_a_different_route_under_the_same_output_name_is_rejected() {
     let itinerary_path = dir.join("itinerary.json");
     std::fs::write(
         &itinerary_path,
-        r#"{"fingerprint":"deadbeef-not-the-real-fingerprint","records":[]}"#,
+        r#"{"fingerprint":"deadbeef-not-the-real-fingerprint","records":[],"maneuvers":[]}"#,
     )
     .unwrap();
 

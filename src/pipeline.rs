@@ -61,7 +61,7 @@ pub async fn run() -> Result<(), String> {
 
     let client = reqwest::Client::new();
 
-    let (records, start_display, end_display, fingerprint) = resume_or_fetch_itinerary(
+    let (records, maneuvers, start_display, end_display, fingerprint) = resume_or_fetch_itinerary(
         &client,
         &directions_key,
         &args,
@@ -78,13 +78,16 @@ pub async fn run() -> Result<(), String> {
         radius: args.radius,
     };
 
-    let processed = probe_missing_frames(
+    let (processed, maneuvers) = probe_missing_frames(
         &client,
         &streetview_key,
         &sv_params,
         args.concurrency,
         records,
+        maneuvers,
+        args.show_turn_signs,
         tuning.turn_threshold,
+        tuning.hop_size,
         &paths.itinerary_path,
         &fingerprint,
     )
@@ -119,13 +122,14 @@ pub async fn run() -> Result<(), String> {
     )
     .await?;
 
-    let (image_paths, all_points) = download_frames(
+    let (image_paths, all_points, maneuvers) = download_frames(
         &client,
         &streetview_key,
         &sv_params,
         args.concurrency,
         &paths.images_dir,
         processed,
+        maneuvers,
         &paths.itinerary_path,
         fingerprint,
     )
@@ -138,6 +142,10 @@ pub async fn run() -> Result<(), String> {
         paths.composited_dir.clone(),
         map_state.as_ref(),
         &args.map_corner,
+        maneuvers,
+        args.show_turn_signs,
+        args.turn_sign_lead_seconds,
+        args.fps,
         args.concurrency,
     )
     .await?;
@@ -152,6 +160,35 @@ pub async fn run() -> Result<(), String> {
     .await
 }
 
+/// Drops consecutive duplicate coordinates (this was `geo::clean_look_points`
+/// before it gained an `is_interpolated` marker to carry through the
+/// dedupe — moved here and removed there since this was its only caller).
+/// When two consecutive points collapse into one, the kept point is marked
+/// real (`false`) if either instance was, so a real vertex that happens to
+/// sit at a segment boundary (and so appears twice — once as the end of one
+/// `interpolate_points_by_hop` call, once as the start of the next) doesn't
+/// get miscounted as interpolated.
+fn clean_look_points_with_markers(
+    points: &[(f64, f64)],
+    is_interpolated: &[bool],
+) -> (Vec<(f64, f64)>, Vec<bool>) {
+    let mut cleaned_points: Vec<(f64, f64)> = Vec::with_capacity(points.len());
+    let mut cleaned_interpolated: Vec<bool> = Vec::with_capacity(points.len());
+    for (&point, &interpolated) in points.iter().zip(is_interpolated) {
+        if cleaned_points.last() == Some(&point) {
+            if !interpolated {
+                *cleaned_interpolated
+                    .last_mut()
+                    .expect("just checked non-empty") = false;
+            }
+        } else {
+            cleaned_points.push(point);
+            cleaned_interpolated.push(interpolated);
+        }
+    }
+    (cleaned_points, cleaned_interpolated)
+}
+
 /// Resumes a persisted itinerary if its fingerprint matches, or fetches a
 /// fresh route from the Directions API and builds a new itinerary otherwise.
 async fn resume_or_fetch_itinerary(
@@ -161,19 +198,30 @@ async fn resume_or_fetch_itinerary(
     tuning: &itinerary::TuningParams,
     avoid: &[directions::AvoidFeature],
     itinerary_path: &std::path::Path,
-) -> Result<(Vec<itinerary::PointRecord>, String, String, String), String> {
+) -> Result<
+    (
+        Vec<itinerary::PointRecord>,
+        Vec<directions::Maneuver>,
+        String,
+        String,
+        String,
+    ),
+    String,
+> {
     let fingerprint = itinerary::route_fingerprint(&args.from, &args.to, tuning);
     let existing = itinerary::load_from(itinerary_path).map_err(|e| e.to_string())?;
     let decision = itinerary::resolve_resume(existing, &fingerprint, args.fresh);
 
-    let (records, start_display, end_display) = match decision {
+    let (records, maneuvers, start_display, end_display) = match decision {
         itinerary::ResumeDecision::FingerprintMismatch { expected, found } => {
             return Err(format!(
                 "persisted itinerary at {} was built for a different route/tuning (expected fingerprint {expected}, found {found}); pass --fresh to start over",
                 itinerary_path.display()
             ));
         }
-        itinerary::ResumeDecision::Resume(records) => (records, args.from.clone(), args.to.clone()),
+        itinerary::ResumeDecision::Resume(records, maneuvers) => {
+            (records, maneuvers, args.from.clone(), args.to.clone())
+        }
         itinerary::ResumeDecision::Fresh => {
             let origin = directions::parse_route_endpoint(&args.from);
             let destination = directions::parse_route_endpoint(&args.to);
@@ -182,20 +230,35 @@ async fn resume_or_fetch_itinerary(
                     .await
                     .map_err(|e| e.to_string())?;
 
+            // `is_interpolated[i]` marks whether `points[i]` is a real
+            // Directions API polyline vertex (`false`) or a point
+            // `geo::interpolate_points_by_hop` synthesized between two
+            // vertices (`true`) — see `PointRecord::is_interpolated`.
             let mut points: Vec<(f64, f64)> = Vec::new();
+            let mut is_interpolated: Vec<bool> = Vec::new();
             if route.points.len() < 2 {
                 points.push(route.start);
+                is_interpolated.push(false);
             } else {
                 for pair in route.points.windows(2) {
-                    points.extend(geo::interpolate_points_by_hop(
-                        pair[0],
-                        pair[1],
-                        tuning.hop_size,
-                    ));
+                    let segment = geo::interpolate_points_by_hop(pair[0], pair[1], tuning.hop_size);
+                    for (i, point) in segment.into_iter().enumerate() {
+                        points.push(point);
+                        // Each segment's own first point is a real vertex
+                        // (`pair[0]`); the rest are synthetic. The route's
+                        // very last vertex (`pair[1]` of the final segment)
+                        // is corrected to real just below, since it never
+                        // lands on a segment's first point.
+                        is_interpolated.push(i != 0);
+                    }
+                }
+                if let Some(last) = is_interpolated.last_mut() {
+                    *last = false;
                 }
             }
-            let points = geo::clean_look_points(&points);
-            let records = itinerary::build_itinerary(&points);
+            let (points, is_interpolated) =
+                clean_look_points_with_markers(&points, &is_interpolated);
+            let records = itinerary::build_itinerary(&points, &is_interpolated);
 
             let start_display = route
                 .start_address
@@ -205,11 +268,11 @@ async fn resume_or_fetch_itinerary(
                 .end_address
                 .clone()
                 .unwrap_or_else(|| format!("{:?}", route.end));
-            (records, start_display, end_display)
+            (records, route.maneuvers, start_display, end_display)
         }
     };
 
-    Ok((records, start_display, end_display, fingerprint))
+    Ok((records, maneuvers, start_display, end_display, fingerprint))
 }
 
 /// Probes Street View metadata for any record not already probed, then
@@ -224,10 +287,13 @@ async fn probe_missing_frames(
     sv_params: &streetview::StreetviewParams,
     concurrency: usize,
     mut records: Vec<itinerary::PointRecord>,
+    maneuvers: Vec<directions::Maneuver>,
+    show_turn_signs: bool,
     turn_threshold: f64,
+    hop_size: f64,
     itinerary_path: &std::path::Path,
     fingerprint: &str,
-) -> Result<Vec<itinerary::PointRecord>, String> {
+) -> Result<(Vec<itinerary::PointRecord>, Vec<directions::Maneuver>), String> {
     let to_probe: Vec<(usize, f64, f64, f64)> = records
         .iter()
         .enumerate()
@@ -262,23 +328,36 @@ async fn probe_missing_frames(
             &itinerary::ItineraryFile {
                 fingerprint: fingerprint.to_string(),
                 records: records.clone(),
+                maneuvers: maneuvers.clone(),
             },
         )
         .map_err(|e| e.to_string())?;
     }
 
     let deduped = itinerary::dedupe_by_pano_id(&records);
+    let maneuvers = itinerary::filter_maneuvers_by_proximity(
+        maneuvers,
+        &deduped,
+        hop_size,
+        itinerary::MAX_MANEUVER_MATCH_HOP_MULTIPLE,
+    );
+    if show_turn_signs && maneuvers.is_empty() {
+        eprintln!(
+            "--show-turn-signs was set, but no maneuver survived matching against this route — the video will have no turn-ahead signs"
+        );
+    }
     let processed = itinerary::insert_turn_frames(&deduped, turn_threshold);
     itinerary::save_to(
         itinerary_path,
         &itinerary::ItineraryFile {
             fingerprint: fingerprint.to_string(),
             records: processed.clone(),
+            maneuvers: maneuvers.clone(),
         },
     )
     .map_err(|e| e.to_string())?;
 
-    Ok(processed)
+    Ok((processed, maneuvers))
 }
 
 /// Prints the route summary and cost estimate, then applies the `--dry-run`
@@ -394,9 +473,17 @@ async fn download_frames(
     concurrency: usize,
     images_dir: &std::path::Path,
     mut processed: Vec<itinerary::PointRecord>,
+    maneuvers: Vec<directions::Maneuver>,
     itinerary_path: &std::path::Path,
     fingerprint: String,
-) -> Result<(Vec<std::path::PathBuf>, Vec<(f64, f64, f64)>), String> {
+) -> Result<
+    (
+        Vec<std::path::PathBuf>,
+        Vec<(f64, f64, f64)>,
+        Vec<directions::Maneuver>,
+    ),
+    String,
+> {
     let download_inputs: Vec<(usize, f64, f64, f64, bool)> = processed
         .iter()
         .enumerate()
@@ -440,16 +527,20 @@ async fn download_frames(
         &itinerary::ItineraryFile {
             fingerprint,
             records: processed,
+            maneuvers: maneuvers.clone(),
         },
     )
     .map_err(|e| e.to_string())?;
 
-    Ok((image_paths, all_points))
+    Ok((image_paths, all_points, maneuvers))
 }
 
 /// Drops consecutive visually-identical frames, renumbers what's left
 /// sequentially, and composites the map inset onto each frame if one was
 /// fetched.
+// Each parameter is read independently; a bundling struct would obscure which
+// ones this stage actually touches.
+#[allow(clippy::too_many_arguments)]
 async fn lineup_and_composite(
     image_paths: Vec<std::path::PathBuf>,
     all_points: Vec<(f64, f64, f64)>,
@@ -457,6 +548,10 @@ async fn lineup_and_composite(
     composited_dir: std::path::PathBuf,
     map_state: Option<&MapState>,
     map_corner: &str,
+    maneuvers: Vec<directions::Maneuver>,
+    show_turn_signs: bool,
+    turn_sign_lead_seconds: f64,
+    fps: u32,
     concurrency: usize,
 ) -> Result<Vec<std::path::PathBuf>, String> {
     let (frame_paths, frame_points) = tokio::task::spawn_blocking(move || -> Result<_, String> {
@@ -471,36 +566,47 @@ async fn lineup_and_composite(
     .await
     .map_err(|e| e.to_string())??;
 
-    let final_frame_paths = if let Some(map_state) = map_state {
-        let corner = compositing::MapCorner::parse(map_corner)?;
-        let composite_params = compositing::CompositeParams {
-            corner,
-            margin_percent: compositing::INSET_MARGIN_PERCENT,
-            footprint_percent: compositing::INSET_FOOTPRINT_PERCENT,
-            map_center: map_state.center,
-            map_zoom: map_state.zoom,
-            map_size: map_state.size,
-            crop_size: map_state.crop_size,
-        };
-        let frames: Vec<(usize, std::path::PathBuf, (f64, f64, f64))> = frame_paths
-            .into_iter()
-            .zip(frame_points)
-            .enumerate()
-            .map(|(i, (path, point))| (i, path, point))
-            .collect();
-        compositing::composite_all(
-            frames,
-            map_state.path.clone(),
-            composited_dir,
-            composite_params,
-            concurrency,
-        )
-        .await?
-    } else {
-        frame_paths
-    };
+    // Compositing runs whenever the inset map is shown OR turn-signs are
+    // requested (2026-08-25 reassessment) — decoupled from "is the inset
+    // map on" so `--show-turn-signs --hide-map` still composites.
+    if map_state.is_none() && !show_turn_signs {
+        return Ok(frame_paths);
+    }
 
-    Ok(final_frame_paths)
+    let corner = compositing::MapCorner::parse(map_corner)?;
+    let frames: Vec<(usize, std::path::PathBuf, (f64, f64, f64))> = frame_paths
+        .into_iter()
+        .zip(frame_points)
+        .enumerate()
+        .map(|(i, (path, point))| (i, path, point))
+        .collect();
+
+    let inset_map = map_state.map(|map_state| compositing::InsetMapParams {
+        corner,
+        margin_percent: compositing::INSET_MARGIN_PERCENT,
+        footprint_percent: compositing::INSET_FOOTPRINT_PERCENT,
+        map_center: map_state.center,
+        map_zoom: map_state.zoom,
+        map_size: map_state.size,
+        crop_size: map_state.crop_size,
+    });
+    let turn_sign = show_turn_signs.then(|| compositing::TurnSignParams {
+        corner,
+        matched: compositing::match_maneuvers_to_frames(&maneuvers, &frames),
+        lead_frames: (turn_sign_lead_seconds * f64::from(fps)).round() as usize,
+    });
+
+    compositing::composite_all(
+        frames,
+        map_state.map(|m| m.path.clone()),
+        composited_dir,
+        compositing::CompositeParams {
+            inset_map,
+            turn_sign,
+        },
+        concurrency,
+    )
+    .await
 }
 
 /// Encodes the final frames to video and writes a representative preview
@@ -526,4 +632,125 @@ async fn encode_and_preview(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_look_points_with_markers_removes_consecutive_duplicates() {
+        let points = [(1.0, 1.0), (1.0, 1.0), (2.0, 2.0), (2.0, 2.0), (3.0, 3.0)];
+        let is_interpolated = [false, true, true, false, false];
+        let (cleaned, cleaned_interpolated) =
+            clean_look_points_with_markers(&points, &is_interpolated);
+        assert_eq!(cleaned, vec![(1.0, 1.0), (2.0, 2.0), (3.0, 3.0)]);
+        assert_eq!(cleaned_interpolated, vec![false, false, false]);
+    }
+
+    #[test]
+    fn clean_look_points_with_markers_keeps_non_consecutive_repeats() {
+        let points = [(1.0, 1.0), (2.0, 2.0), (1.0, 1.0)];
+        let is_interpolated = [false, true, true];
+        let (cleaned, cleaned_interpolated) =
+            clean_look_points_with_markers(&points, &is_interpolated);
+        assert_eq!(cleaned, points.to_vec());
+        assert_eq!(cleaned_interpolated, is_interpolated.to_vec());
+    }
+
+    fn temp_dir(label: &str) -> std::path::PathBuf {
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "svmm-pipeline-test-{label}-{}-{n}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Regression check for the 2026-08-25 gate-decoupling decision:
+    /// `--show-turn-signs --hide-map` (`map_state: None`, `show_turn_signs:
+    /// true`) must still run the compositing pass, not silently pass frames
+    /// through untouched the way `--hide-map` alone does.
+    #[tokio::test]
+    async fn lineup_and_composite_runs_compositing_for_turn_signs_with_no_map() {
+        let images_dir = temp_dir("images");
+        let mut image_paths = Vec::new();
+        for i in 0..2u8 {
+            let path = images_dir.join(format!("frame{i}.jpg"));
+            image::RgbImage::from_pixel(64, 32, image::Rgb([i * 10, i * 10, i * 10]))
+                .save(&path)
+                .unwrap();
+            image_paths.push(path);
+        }
+        let all_points = vec![(0.0, 0.0, 0.0), (0.0, 0.001, 0.0)];
+        let lineup_dir = temp_dir("lineup");
+        let composited_dir = temp_dir("composited");
+
+        let final_paths = lineup_and_composite(
+            image_paths,
+            all_points,
+            lineup_dir,
+            composited_dir.clone(),
+            None,
+            "bottom-right",
+            vec![],
+            true,
+            2.5,
+            20,
+            2,
+        )
+        .await
+        .expect("lineup_and_composite should succeed");
+
+        assert_eq!(final_paths.len(), 2);
+        assert!(
+            composited_dir.exists(),
+            "compositing should have run (and created composited/) even with no inset map"
+        );
+        for path in &final_paths {
+            assert!(
+                path.starts_with(&composited_dir),
+                "{path:?} should be a composited/ frame, not a passthrough lineup/ frame"
+            );
+        }
+    }
+
+    /// Companion to the above: with neither the map nor turn-signs
+    /// requested, compositing must NOT run — frames pass through from
+    /// lineup/ untouched, matching this codebase's pre-existing behavior.
+    #[tokio::test]
+    async fn lineup_and_composite_skips_compositing_when_nothing_is_requested() {
+        let images_dir = temp_dir("images-none");
+        let path = images_dir.join("frame0.jpg");
+        image::RgbImage::from_pixel(64, 32, image::Rgb([1, 2, 3]))
+            .save(&path)
+            .unwrap();
+        let lineup_dir = temp_dir("lineup-none");
+        let composited_dir = temp_dir("composited-none");
+        // Not created by this test — asserting on it below proves
+        // composite_all's own `create_dir_all` never ran.
+        std::fs::remove_dir_all(&composited_dir).unwrap();
+
+        let final_paths = lineup_and_composite(
+            vec![path],
+            vec![(0.0, 0.0, 0.0)],
+            lineup_dir.clone(),
+            composited_dir.clone(),
+            None,
+            "bottom-right",
+            vec![],
+            false,
+            2.5,
+            20,
+            2,
+        )
+        .await
+        .expect("lineup_and_composite should succeed");
+
+        assert_eq!(final_paths.len(), 1);
+        assert!(final_paths[0].starts_with(&lineup_dir));
+        assert!(!composited_dir.exists());
+    }
 }

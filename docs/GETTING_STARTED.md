@@ -147,6 +147,26 @@ Here's a frame from the same demo route as above, with the inset showing a marke
 
 ![A frame from an svmm output video, with a small inset map in the bottom-right corner showing the route and a position marker](media/demo-inset-map-frame.jpg)
 
+### Turn-ahead road signs: `--show-turn-signs`/`--turn-sign-lead-seconds`
+
+An optional road-sign-style overlay, off by default, that appears 2-3 seconds before a *real* navigation turn:
+
+```sh
+fnox exec -- cargo run --release -- --from "Eiffel Tower" --to "Arc de Triomphe" --show-turn-signs
+```
+
+- `--show-turn-signs` turns it on. It's sourced from the Directions API's own `maneuver` data for each step of the route — including "continue straight" at an ambiguous intersection or fork, since Google itself only emits `maneuver` where a call-out is warranted.
+- `--turn-sign-lead-seconds` (default `2.5`) sets how far ahead of the turn, in seconds of *output video*, the sign starts appearing.
+- The sign stacks directly above the inset route map when both are shown (the default); with `--hide-map`, it still appears on its own, in the same corner `--map-corner` would have placed the map.
+
+**This is a different "turn" than `--turn-threshold`.** `--turn-threshold` controls an unrelated, purely geometric camera-smoothing feature: it inserts extra pan frames whenever the route's heading changes sharply between two points, regardless of whether that's a real intersection or just a bend in the road. `--show-turn-signs` only fires on real Directions API maneuvers.
+
+The sign shows both a direction glyph (arrow/chevron) and the upcoming road name, set in [Signika](https://github.com/googlefonts/Signika) (SIL Open Font License 1.1, bundled in the binary) — chosen for its resemblance to the DIN 1451-style lettering used on road signage across much of continental Europe.
+
+Here's a frame from the same demo route as the inset-map screenshot above, with `--show-turn-signs` also enabled — the sign stacked above the inset map, showing the upcoming turn onto Av. d'Iéna:
+
+![A frame from an svmm output video, with the inset map and a green turn-ahead road sign stacked above it, showing a right-turn arrow and the upcoming road name](media/demo-turn-sign-frame.jpg)
+
 ## 4. Cost
 
 Prices below are from Google's published rate card (developers.google.com/maps/billing-and-pricing/pricing, checked 2026-08-23) — verify against the live console before relying on them at volume, since Google's pricing changes.
