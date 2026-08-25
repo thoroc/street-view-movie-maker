@@ -37,16 +37,6 @@ pub fn interpolate_points_by_hop(a: (f64, f64), b: (f64, f64), hop_size_m: f64) 
     interpolate_points(a, b, n_points)
 }
 
-pub fn clean_look_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
-    let mut cleaned: Vec<(f64, f64)> = Vec::with_capacity(points.len());
-    for &point in points {
-        if cleaned.last() != Some(&point) {
-            cleaned.push(point);
-        }
-    }
-    cleaned
-}
-
 pub fn turn_headings(h1: f64, h2: f64, stepsize: f64) -> Vec<f64> {
     let mut h1 = h1;
     let mut h2 = h2;
@@ -246,20 +236,6 @@ mod tests {
         assert_eq!(points.len(), 23);
         assert_close(points[0].0, 33.669793, 1e-9);
         assert_close(points.last().unwrap().0, 33.671796, 1e-9);
-    }
-
-    #[test]
-    fn clean_look_points_removes_consecutive_duplicates() {
-        let input = vec![(1.0, 1.0), (1.0, 1.0), (2.0, 2.0), (2.0, 2.0), (3.0, 3.0)];
-        let cleaned = clean_look_points(&input);
-        assert_eq!(cleaned, vec![(1.0, 1.0), (2.0, 2.0), (3.0, 3.0)]);
-    }
-
-    #[test]
-    fn clean_look_points_keeps_non_consecutive_repeats() {
-        let input = vec![(1.0, 1.0), (2.0, 2.0), (1.0, 1.0)];
-        let cleaned = clean_look_points(&input);
-        assert_eq!(cleaned, input);
     }
 
     #[test]

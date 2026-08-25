@@ -152,6 +152,35 @@ pub async fn run() -> Result<(), String> {
     .await
 }
 
+/// Drops consecutive duplicate coordinates (this was `geo::clean_look_points`
+/// before it gained an `is_interpolated` marker to carry through the
+/// dedupe — moved here and removed there since this was its only caller).
+/// When two consecutive points collapse into one, the kept point is marked
+/// real (`false`) if either instance was, so a real vertex that happens to
+/// sit at a segment boundary (and so appears twice — once as the end of one
+/// `interpolate_points_by_hop` call, once as the start of the next) doesn't
+/// get miscounted as interpolated.
+fn clean_look_points_with_markers(
+    points: &[(f64, f64)],
+    is_interpolated: &[bool],
+) -> (Vec<(f64, f64)>, Vec<bool>) {
+    let mut cleaned_points: Vec<(f64, f64)> = Vec::with_capacity(points.len());
+    let mut cleaned_interpolated: Vec<bool> = Vec::with_capacity(points.len());
+    for (&point, &interpolated) in points.iter().zip(is_interpolated) {
+        if cleaned_points.last() == Some(&point) {
+            if !interpolated {
+                *cleaned_interpolated
+                    .last_mut()
+                    .expect("just checked non-empty") = false;
+            }
+        } else {
+            cleaned_points.push(point);
+            cleaned_interpolated.push(interpolated);
+        }
+    }
+    (cleaned_points, cleaned_interpolated)
+}
+
 /// Resumes a persisted itinerary if its fingerprint matches, or fetches a
 /// fresh route from the Directions API and builds a new itinerary otherwise.
 async fn resume_or_fetch_itinerary(
@@ -182,20 +211,35 @@ async fn resume_or_fetch_itinerary(
                     .await
                     .map_err(|e| e.to_string())?;
 
+            // `is_interpolated[i]` marks whether `points[i]` is a real
+            // Directions API polyline vertex (`false`) or a point
+            // `geo::interpolate_points_by_hop` synthesized between two
+            // vertices (`true`) — see `PointRecord::is_interpolated`.
             let mut points: Vec<(f64, f64)> = Vec::new();
+            let mut is_interpolated: Vec<bool> = Vec::new();
             if route.points.len() < 2 {
                 points.push(route.start);
+                is_interpolated.push(false);
             } else {
                 for pair in route.points.windows(2) {
-                    points.extend(geo::interpolate_points_by_hop(
-                        pair[0],
-                        pair[1],
-                        tuning.hop_size,
-                    ));
+                    let segment = geo::interpolate_points_by_hop(pair[0], pair[1], tuning.hop_size);
+                    for (i, point) in segment.into_iter().enumerate() {
+                        points.push(point);
+                        // Each segment's own first point is a real vertex
+                        // (`pair[0]`); the rest are synthetic. The route's
+                        // very last vertex (`pair[1]` of the final segment)
+                        // is corrected to real just below, since it never
+                        // lands on a segment's first point.
+                        is_interpolated.push(i != 0);
+                    }
+                }
+                if let Some(last) = is_interpolated.last_mut() {
+                    *last = false;
                 }
             }
-            let points = geo::clean_look_points(&points);
-            let records = itinerary::build_itinerary(&points);
+            let (points, is_interpolated) =
+                clean_look_points_with_markers(&points, &is_interpolated);
+            let records = itinerary::build_itinerary(&points, &is_interpolated);
 
             let start_display = route
                 .start_address
@@ -526,4 +570,29 @@ async fn encode_and_preview(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_look_points_with_markers_removes_consecutive_duplicates() {
+        let points = [(1.0, 1.0), (1.0, 1.0), (2.0, 2.0), (2.0, 2.0), (3.0, 3.0)];
+        let is_interpolated = [false, true, true, false, false];
+        let (cleaned, cleaned_interpolated) =
+            clean_look_points_with_markers(&points, &is_interpolated);
+        assert_eq!(cleaned, vec![(1.0, 1.0), (2.0, 2.0), (3.0, 3.0)]);
+        assert_eq!(cleaned_interpolated, vec![false, false, false]);
+    }
+
+    #[test]
+    fn clean_look_points_with_markers_keeps_non_consecutive_repeats() {
+        let points = [(1.0, 1.0), (2.0, 2.0), (1.0, 1.0)];
+        let is_interpolated = [false, true, true];
+        let (cleaned, cleaned_interpolated) =
+            clean_look_points_with_markers(&points, &is_interpolated);
+        assert_eq!(cleaned, points.to_vec());
+        assert_eq!(cleaned_interpolated, is_interpolated.to_vec());
+    }
 }

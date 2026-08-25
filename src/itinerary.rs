@@ -11,12 +11,21 @@ pub struct PointRecord {
     pub status: Option<String>,
     pub copyright: Option<String>,
     pub downloaded: bool,
+    /// `false` for a real Directions API polyline vertex, `true` for a point
+    /// synthesized between two vertices by `geo::interpolate_points_by_hop`.
+    /// Not consumed anywhere yet — added so a future geometric-turn-detector
+    /// hardening pass doesn't need to re-derive real-vs-interpolated from
+    /// scratch (see `.context/known-issues/2026-08-25-geometric-turn-detector-fires-on-gentle-curves.md`).
+    pub is_interpolated: bool,
 }
 
 /// Builds the initial itinerary from a point list, computing headings toward
 /// the next point (the last point reuses the previous heading), before any
 /// Street View probing has happened. Mirrors `create_itinerary_df`.
-pub fn build_itinerary(points: &[(f64, f64)]) -> Vec<PointRecord> {
+/// `is_interpolated[i]` must correspond to `points[i]` — see
+/// `pipeline.rs::resume_or_fetch_itinerary` for how the two are built
+/// together.
+pub fn build_itinerary(points: &[(f64, f64)], is_interpolated: &[bool]) -> Vec<PointRecord> {
     let mut records: Vec<PointRecord> = Vec::with_capacity(points.len());
     for i in 0..points.len() {
         let heading = if i + 1 < points.len() {
@@ -34,6 +43,7 @@ pub fn build_itinerary(points: &[(f64, f64)]) -> Vec<PointRecord> {
             status: None,
             copyright: None,
             downloaded: false,
+            is_interpolated: is_interpolated[i],
         });
     }
     records
@@ -219,7 +229,7 @@ mod tests {
     #[test]
     fn build_itinerary_computes_headings_between_consecutive_points() {
         let points = vec![(0.0, 0.0), (0.0, 1.0), (1.0, 1.0)];
-        let records = build_itinerary(&points);
+        let records = build_itinerary(&points, &[false, true, false]);
         assert_eq!(records.len(), 3);
         assert_eq!(
             records[0].heading,
@@ -234,19 +244,28 @@ mod tests {
     #[test]
     fn build_itinerary_last_point_reuses_previous_heading() {
         let points = vec![(0.0, 0.0), (0.0, 1.0), (1.0, 1.0)];
-        let records = build_itinerary(&points);
+        let records = build_itinerary(&points, &[false, true, false]);
         assert_eq!(records[2].heading, records[1].heading);
     }
 
     #[test]
     fn build_itinerary_starts_unprobed_and_undownloaded() {
         let points = vec![(0.0, 0.0), (0.0, 1.0)];
-        let records = build_itinerary(&points);
+        let records = build_itinerary(&points, &[false, false]);
         for r in &records {
             assert_eq!(r.status, None);
             assert_eq!(r.pano_id, None);
             assert!(!r.downloaded);
         }
+    }
+
+    #[test]
+    fn build_itinerary_sets_is_interpolated_per_point() {
+        let points = vec![(0.0, 0.0), (0.0, 0.5), (0.0, 1.0)];
+        let records = build_itinerary(&points, &[false, true, false]);
+        assert!(!records[0].is_interpolated);
+        assert!(records[1].is_interpolated);
+        assert!(!records[2].is_interpolated);
     }
 
     fn record(
@@ -265,6 +284,7 @@ mod tests {
             status: Some(status.to_string()),
             copyright: Some(copyright.to_string()),
             downloaded: false,
+            is_interpolated: false,
         }
     }
 
