@@ -1,13 +1,13 @@
 ---
 title: "ADR-008: Inset map overlay — local compositing, single Static Maps fetch, on-by-default"
-status: proposed
+status: accepted
 date: 2026-08-23
 context:
   - path: ".context/findings/2026-08-23-inset-map-with-route-in-the-video-corner-feasibility.md"
   - path: ".context/plans/2026-08-23-add-inset-map-with-route-to-the-output-video-corner.md"
 ---
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-23
 
 ## Context
