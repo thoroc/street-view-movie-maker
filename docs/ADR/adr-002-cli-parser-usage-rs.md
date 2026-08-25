@@ -27,7 +27,7 @@ implementation or afterward, fall back to `clap`, using the CLI flag table in th
 ## Consequences
 
 Gains: one struct definition drives argument parsing, `--help` text, shell completions, and generated docs/man
-pages, with a lighter parser than clap. Cost: every flag definition (`main.rs`'s `#[derive(Cli)]` struct) is coupled
+pages, with a lighter parser than clap. Cost: every flag definition (`cli.rs`'s `#[derive(Cli)]` struct) is coupled
 to an experimental framework — a breaking point release could require an unplanned migration. This is a cross-
 cutting decision, not a simple version pin: switching parsers later touches every flag definition and would need to
 manually reproduce the generated completions/docs/man-page behavior another way.
