@@ -195,9 +195,42 @@ Example measured on a real ~90km airport-to-village route:
 
 `--turn-threshold` (how much a heading has to change before extra turn frames get inserted) has more effect than `--hop-size` on a winding road, but even a generous threshold only trims the count by 10-20% here — most of it is genuine panorama density, not an artifact of the tuning flags. If you want a meaningfully shorter/cheaper video for a long route, `--hop-size` in the many-hundreds-of-meters range is the main lever available today; there's no built-in "keep every Nth frame" downsampling yet.
 
+### Automatic filtering of off-route panoramas
+
+Street View's `--radius` is a soft search hint, not a hard filter — Google can still return the
+"best available" panorama outside it rather than reporting no coverage. To catch the clearly-wrong
+cases (a pano on a different street entirely, tucked under a bridge structure, and similar), `svmm`
+drops any matched panorama farther than `--hop-size` × 3 from the point it was queried for, before
+that frame is ever downloaded — the same distance-vs-`hop_size` proximity check already used for
+turn-ahead road signs. A dropped match prints a diagnostic to stderr and is otherwise treated as "no
+coverage" for that point.
+
+This won't catch a pano that's simply facing the wrong way despite being the nearest match
+available (e.g. on a divided highway where coverage runs the opposite direction) — there's no
+Street View metadata that reveals which way a panorama was captured facing. See
+[Excluding a specific bad frame](#excluding-a-specific-bad-frame) below for that case.
+
+Because this is a distance check independent of `--radius`, a wide `--radius` can still return a
+match this filter then rejects — that's expected, not a bug: `--radius` controls how far Google is
+allowed to search, this controls how far a found match is allowed to be from what you asked for.
+
 ## 5. Resuming and starting over
 
 Re-running the same `--output` name resumes from persisted state (`<output-dir>/itinerary.json`) rather than re-probing and re-downloading everything — useful if a run gets interrupted. If you change `--from`/`--to` or the tuning flags for the same `--output` name, the CLI detects the mismatch and refuses to resume (to avoid silently mixing two different routes); pass `--fresh` to start over deliberately.
+
+### Excluding a specific bad frame
+
+If a downloaded frame is wrong in a way the automatic filter above can't catch — most commonly a
+panorama that's simply facing the wrong direction — pass its frame number (as shown in
+`<output-dir>/images/frameN.jpg`) via `--exclude-frames`:
+
+```sh
+fnox exec -- cargo run --release -- --from "..." --to "..." --exclude-frames 547,672,2462
+```
+
+This drops those frames from compositing/encoding without re-downloading anything. The exclusion
+list is merged into `itinerary.json` and persists across later runs/resumes for the same `--output`
+name — you only need to pass `--exclude-frames` once per frame number, not on every subsequent run.
 
 ## 6. Releasing
 

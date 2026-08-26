@@ -243,3 +243,64 @@ fn interrupted_run_resumes_without_redownloading() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+#[ignore = "hits the real, billed Directions/Street View APIs — run with `cargo test -- --ignored` and real API keys set"]
+fn exclude_frames_drops_a_frame_from_compositing_without_redownloading() {
+    let streetview_key =
+        std::env::var("STREETVIEW_API_KEY").expect("set STREETVIEW_API_KEY to run this test");
+    let directions_key =
+        std::env::var("DIRECTIONS_API_KEY").expect("set DIRECTIONS_API_KEY to run this test");
+    let dir = temp_output_dir();
+    let base_args = [
+        "--from",
+        "33.669793,-115.802125",
+        "--to",
+        "33.671796,-115.801851",
+        "--output",
+        "exclude_test",
+        "--output-dir",
+        dir.to_str().unwrap(),
+        "--yes",
+    ];
+
+    let first = run_binary(&base_args, (&streetview_key, &directions_key));
+    assert!(
+        first.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let images_dir = dir.join("images");
+    let downloaded_before = std::fs::read_dir(&images_dir).unwrap().count();
+
+    let mut second_args = base_args.to_vec();
+    second_args.extend(["--exclude-frames", "0"]);
+    let second = run_binary(&second_args, (&streetview_key, &directions_key));
+    assert!(
+        second.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&second.stderr);
+    assert!(
+        stderr.contains("1 frame(s) excluded from compositing"),
+        "expected an exclusion diagnostic, got: {stderr}"
+    );
+
+    let downloaded_after = std::fs::read_dir(&images_dir).unwrap().count();
+    assert_eq!(
+        downloaded_before, downloaded_after,
+        "excluding a frame must not trigger any re-download"
+    );
+
+    let itinerary_path = dir.join("itinerary.json");
+    let itinerary_contents = std::fs::read_to_string(&itinerary_path).unwrap();
+    let itinerary: serde_json::Value = serde_json::from_str(&itinerary_contents).unwrap();
+    assert_eq!(
+        itinerary["excluded_frames"],
+        serde_json::json!([0]),
+        "expected the exclusion to persist into itinerary.json, got: {itinerary_contents}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
