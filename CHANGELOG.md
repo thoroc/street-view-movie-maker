@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/thoroc/street-view-movie-maker/compare/v0.4.0...v0.5.0) (2026-08-26)
+
+
+### Features
+
+* add turn-ahead road-sign overlay ([#33](https://github.com/thoroc/street-view-movie-maker/issues/33)) ([7eef1ad](https://github.com/thoroc/street-view-movie-maker/commit/7eef1adcc159c7c8d709c0adf8357b959beb5c22))
+* filter off-route Street View frames and support manual exclusion ([#36](https://github.com/thoroc/street-view-movie-maker/issues/36)) ([2d00a5e](https://github.com/thoroc/street-view-movie-maker/commit/2d00a5ef113e8ad052ebf3d6ba629778151c48b8))
+
 ## [0.4.0](https://github.com/thoroc/street-view-movie-maker/compare/v0.3.0...v0.4.0) (2026-08-25)
 
 
